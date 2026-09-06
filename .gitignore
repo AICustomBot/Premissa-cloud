@@ -10,3 +10,15 @@ coverage
 terraform.tfstate*
 .terraform/
 /tmp
+
+# Firebase emulator and CLI artifacts
+.firebase/
+firebase-debug.log
+firestore-debug.log
+database-debug.log
+ui-debug.log
+pubsub-debug.log
+
+# Local client config overrides. The tracked firebase-applet-config.json holds
+# only public Firebase web config; see docs/security/CLIENT-CONFIG.md.
+firebase-applet-config.local.json

@@ -34,6 +34,32 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # Executable proof that the twelve threat payloads in security_spec.md are
+  # actually blocked by firestore.rules. Without this job the security spec is
+  # a document rather than a control.
+  security-rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: npm ci
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools@13
+      - name: Run rules tests against the Firestore emulator
+        run: |
+          firebase emulators:exec \
+            --only firestore,auth \
+            --project permissa-rules-test \
+            "npm run test --workspace=@permissa/security-rules"
+
   terraform:
     runs-on: ubuntu-latest
     steps:

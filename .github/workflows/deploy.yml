@@ -3,10 +3,15 @@ name: Deploy
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
   id-token: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -14,17 +19,23 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
       - id: auth
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_DEPLOY_SA }}
       - uses: google-github-actions/setup-gcloud@v2
-      - name: Build and push images
+
+      - name: Build and push API image
         run: |
           gcloud builds submit --tag "$IMAGE_API" --file apps/api/Dockerfile .
         env:
           IMAGE_API: ${{ secrets.ARTIFACT_REGISTRY }}/api:${{ github.sha }}
+
       - name: Deploy API revision
         run: |
           gcloud run deploy permissa-api \
@@ -34,8 +45,28 @@ jobs:
             --no-allow-unauthenticated
         env:
           IMAGE_API: ${{ secrets.ARTIFACT_REGISTRY }}/api:${{ github.sha }}
+
+      # The previous implementation ran
+      #   gcloud firestore databases update --quiet || true
+      # which deployed neither rules nor indexes and swallowed its own exit
+      # code, so the hardened rules were never actually shipped.
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools@13
+
       - name: Deploy Firestore rules and indexes
         run: |
-          gcloud firestore databases update --quiet || true
+          firebase deploy \
+            --only firestore:rules,firestore:indexes \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --non-interactive
+
+      - name: Verify API health
+        run: |
+          URL="$(gcloud run services describe permissa-api \
+            --region us-central1 --format 'value(status.url)')"
+          TOKEN="$(gcloud auth print-identity-token)"
+          curl --fail --silent --show-error --max-time 30 \
+            -H "Authorization: Bearer $TOKEN" "$URL/health"
+
       - name: Record release evidence
         run: echo "revision=${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"

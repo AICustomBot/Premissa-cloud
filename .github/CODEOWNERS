@@ -1,0 +1,11 @@
+# Every change requires review by the repository owner.
+*                       @EKF0
+
+# Security-critical surfaces. Do not merge changes to these without reading
+# security_spec.md and re-running the rules test suite.
+/firestore.rules        @EKF0
+/firebase.json          @EKF0
+/packages/policy/       @EKF0
+/packages/security-rules/ @EKF0
+/infra/                 @EKF0
+/.github/workflows/     @EKF0
