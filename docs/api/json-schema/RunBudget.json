@@ -1,0 +1,39 @@
+{
+  "$ref": "#/definitions/RunBudget",
+  "definitions": {
+    "RunBudget": {
+      "type": "object",
+      "properties": {
+        "costCapUsd": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "estimatedCostUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "parallelCallCap": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "parallelCallsUsed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "entityCap": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "costCapUsd",
+        "estimatedCostUsd",
+        "parallelCallCap",
+        "parallelCallsUsed",
+        "entityCap"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

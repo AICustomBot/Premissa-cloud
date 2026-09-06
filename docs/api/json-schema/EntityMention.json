@@ -1,0 +1,41 @@
+{
+  "$ref": "#/definitions/EntityMention",
+  "definitions": {
+    "EntityMention": {
+      "type": "object",
+      "properties": {
+        "sceneId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "sourceRange": {
+          "type": "object",
+          "properties": {
+            "start": {
+              "type": "integer"
+            },
+            "end": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "start",
+            "end"
+          ],
+          "additionalProperties": false
+        },
+        "contextExcerpt": {
+          "type": "string",
+          "maxLength": 600
+        }
+      },
+      "required": [
+        "sceneId",
+        "sourceRange",
+        "contextExcerpt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

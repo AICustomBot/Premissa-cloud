@@ -1,0 +1,165 @@
+{
+  "$ref": "#/definitions/ClearanceRun",
+  "definitions": {
+    "ClearanceRun": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "$ref": "#/definitions/ClearanceRun/properties/createdAt"
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "projectId": {
+          "$ref": "#/definitions/ClearanceRun/properties/id"
+        },
+        "scriptVersionId": {
+          "$ref": "#/definitions/ClearanceRun/properties/id"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "CREATED",
+            "QUEUED",
+            "PREFLIGHT",
+            "RUNNING",
+            "PAUSED_FAILURE",
+            "PAUSED_BUDGET",
+            "CANCELLED_PARTIAL",
+            "DRAFT_READY",
+            "PRODUCER_REVIEW",
+            "CHANGES_REQUESTED",
+            "PROFESSIONAL_REVIEW",
+            "APPROVED"
+          ]
+        },
+        "jurisdiction": {
+          "type": "string",
+          "enum": [
+            "US"
+          ]
+        },
+        "budget": {
+          "type": "object",
+          "properties": {
+            "costCapUsd": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "estimatedCostUsd": {
+              "type": "number",
+              "minimum": 0
+            },
+            "parallelCallCap": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "parallelCallsUsed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "entityCap": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          "required": [
+            "costCapUsd",
+            "estimatedCostUsd",
+            "parallelCallCap",
+            "parallelCallsUsed",
+            "entityCap"
+          ],
+          "additionalProperties": false
+        },
+        "checkpoint": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "completedEntityIds": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/ClearanceRun/properties/id"
+                  }
+                },
+                "pendingEntityIds": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/ClearanceRun/properties/id"
+                  }
+                },
+                "lastCheckpointAt": {
+                  "$ref": "#/definitions/ClearanceRun/properties/createdAt"
+                },
+                "attempt": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "required": [
+                "completedEntityIds",
+                "pendingEntityIds",
+                "lastCheckpointAt",
+                "attempt"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "startedAt": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ClearanceRun/properties/createdAt"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "endedAt": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ClearanceRun/properties/createdAt"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deadlineAt": {
+          "$ref": "#/definitions/ClearanceRun/properties/createdAt"
+        }
+      },
+      "required": [
+        "version",
+        "createdAt",
+        "updatedAt",
+        "id",
+        "projectId",
+        "scriptVersionId",
+        "state",
+        "jurisdiction",
+        "budget",
+        "checkpoint",
+        "startedAt",
+        "endedAt",
+        "deadlineAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

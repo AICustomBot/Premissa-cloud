@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { computeConfidence, evaluateEvidenceGate } from "../src/index.js"
-import type { ConfidenceInput } from "../src/confidence.js"
+import { computeConfidence, evaluateEvidenceGate } from "../src/index"
+import type { ConfidenceInput } from "../src/confidence"
 
 const strong: ConfidenceInput = {
 	authority: "TIER_1_APPLICABLE",

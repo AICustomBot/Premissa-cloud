@@ -1,0 +1,24 @@
+{
+  "$ref": "#/definitions/ConfirmEntitiesRequest",
+  "definitions": {
+    "ConfirmEntitiesRequest": {
+      "type": "object",
+      "properties": {
+        "confirmedEntityIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "minItems": 1,
+          "maxItems": 50
+        }
+      },
+      "required": [
+        "confirmedEntityIds"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

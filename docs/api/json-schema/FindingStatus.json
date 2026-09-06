@@ -1,0 +1,16 @@
+{
+  "$ref": "#/definitions/FindingStatus",
+  "definitions": {
+    "FindingStatus": {
+      "type": "string",
+      "enum": [
+        "RESEARCH_CLEARED",
+        "NEEDS_LICENCE",
+        "NEEDS_REWRITE",
+        "BLOCKED",
+        "INSUFFICIENT_EVIDENCE"
+      ]
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

@@ -1,0 +1,39 @@
+{
+  "$ref": "#/definitions/RunCheckpoint",
+  "definitions": {
+    "RunCheckpoint": {
+      "type": "object",
+      "properties": {
+        "completedEntityIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "pendingEntityIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RunCheckpoint/properties/completedEntityIds/items"
+          }
+        },
+        "lastCheckpointAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "attempt": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "completedEntityIds",
+        "pendingEntityIds",
+        "lastCheckpointAt",
+        "attempt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

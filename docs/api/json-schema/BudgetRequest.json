@@ -1,0 +1,26 @@
+{
+  "$ref": "#/definitions/BudgetRequest",
+  "definitions": {
+    "BudgetRequest": {
+      "type": "object",
+      "properties": {
+        "requestedCostCapUsd": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10
+        },
+        "justification": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 1000
+        }
+      },
+      "required": [
+        "requestedCostCapUsd",
+        "justification"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

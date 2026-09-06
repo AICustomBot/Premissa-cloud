@@ -1,0 +1,38 @@
+{
+  "$ref": "#/definitions/ProjectGrant",
+  "definitions": {
+    "ProjectGrant": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "userId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "OWNER",
+            "PRODUCER",
+            "REVIEWER"
+          ]
+        },
+        "grantedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "projectId",
+        "userId",
+        "role",
+        "grantedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

@@ -1,0 +1,14 @@
+{
+  "$ref": "#/definitions/SourceTier",
+  "definitions": {
+    "SourceTier": {
+      "type": "string",
+      "enum": [
+        "TIER_1",
+        "TIER_2",
+        "TIER_3"
+      ]
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

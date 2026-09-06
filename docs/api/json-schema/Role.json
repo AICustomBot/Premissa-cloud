@@ -1,0 +1,14 @@
+{
+  "$ref": "#/definitions/Role",
+  "definitions": {
+    "Role": {
+      "type": "string",
+      "enum": [
+        "OWNER",
+        "PRODUCER",
+        "REVIEWER"
+      ]
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

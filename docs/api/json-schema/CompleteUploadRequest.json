@@ -1,0 +1,20 @@
+{
+  "$ref": "#/definitions/CompleteUploadRequest",
+  "definitions": {
+    "CompleteUploadRequest": {
+      "type": "object",
+      "properties": {
+        "checksumSha256": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "checksumSha256"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

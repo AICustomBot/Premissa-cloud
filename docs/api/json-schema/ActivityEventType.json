@@ -1,0 +1,33 @@
+{
+  "$ref": "#/definitions/ActivityEventType",
+  "definitions": {
+    "ActivityEventType": {
+      "type": "string",
+      "enum": [
+        "RUN_CREATED",
+        "RUN_QUEUED",
+        "PREFLIGHT_PASSED",
+        "PREFLIGHT_DEGRADED",
+        "PREFLIGHT_BLOCKED",
+        "SPECIALIST_STARTED",
+        "SPECIALIST_COMPLETED",
+        "SEARCH_COMPLETED",
+        "SEARCH_FAILED",
+        "EVIDENCE_GATE_ACCEPTED",
+        "EVIDENCE_GATE_DOWNGRADED",
+        "EVIDENCE_GATE_REJECTED",
+        "CHECKPOINT_SAVED",
+        "BUDGET_THRESHOLD_REACHED",
+        "RUN_PAUSED",
+        "RUN_RESUMED",
+        "RUN_CANCELLED",
+        "DRAFT_READY",
+        "REVIEW_REQUESTED",
+        "REVIEW_RETURNED",
+        "REVIEW_APPROVED",
+        "INJECTION_ATTEMPT_IGNORED"
+      ]
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

@@ -1,0 +1,14 @@
+{
+  "$ref": "#/definitions/ConfidenceBand",
+  "definitions": {
+    "ConfidenceBand": {
+      "type": "string",
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH"
+      ]
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

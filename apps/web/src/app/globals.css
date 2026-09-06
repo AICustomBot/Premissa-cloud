@@ -1,0 +1,351 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased min-h-screen selection:bg-indigo-100 selection:text-indigo-900;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+/* Modern, Clean & High-Readability Design System */
+.glass-panel {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow:
+    0 1px 3px 0 rgba(15, 23, 42, 0.05),
+    0 1px 2px -1px rgba(15, 23, 42, 0.05);
+  position: relative;
+}
+
+/* ==========================================================================
+   PERMISSA TACTILE CARD SYSTEM
+   Mathematical elevation, physical depth, top-edge bevel, and micro-press states.
+   ========================================================================== */
+
+.card-panel {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.9),
+    0 1px 3px 0 rgba(15, 23, 42, 0.04),
+    0 1px 2px -1px rgba(15, 23, 42, 0.03);
+  position: relative;
+}
+
+.card-interactive {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.875rem;
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.9),
+    0 1px 3px 0 rgba(15, 23, 42, 0.04),
+    0 1px 2px -1px rgba(15, 23, 42, 0.03);
+  transition:
+    transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.2s ease;
+  position: relative;
+  cursor: pointer;
+}
+
+.card-interactive:hover {
+  transform: translateY(-2.5px);
+  border-color: #cbd5e1;
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 1),
+    0 12px 24px -4px rgba(15, 23, 42, 0.08),
+    0 4px 8px -2px rgba(15, 23, 42, 0.04);
+}
+
+.card-interactive:active {
+  transform: translateY(0);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.6),
+    0 2px 4px 0 rgba(15, 23, 42, 0.05);
+}
+
+.card-stat-tile {
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.8),
+    0 1px 2px 0 rgba(15, 23, 42, 0.03);
+  transition:
+    transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.18s ease;
+  cursor: pointer;
+  text-align: left;
+}
+
+.card-stat-tile:hover {
+  transform: translateY(-1.5px);
+  border-color: #cbd5e1;
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 1),
+    0 6px 16px -2px rgba(15, 23, 42, 0.06);
+}
+
+.card-stat-tile:active {
+  transform: translateY(0);
+}
+
+.glass-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.9),
+    0 1px 3px 0 rgba(15, 23, 42, 0.04);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+.glass-card:hover {
+  border-color: #cbd5e1;
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 1),
+    0 10px 25px -5px rgba(15, 23, 42, 0.08),
+    0 8px 10px -6px rgba(15, 23, 42, 0.04);
+  transform: translateY(-2px);
+}
+
+.glass-pill {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.03);
+  transition: all 0.15s ease;
+}
+
+.glass-input {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.04);
+  transition: all 0.15s ease;
+}
+
+.glass-input:focus {
+  background: #ffffff;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+  outline: none;
+}
+
+.glass-modal {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
+}
+
+/* Custom Clean Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ==========================================================================
+   Tactile & Realistic Button System
+   Physically grounded button styles with optical rim highlights,
+   tactile depth shadows, micro-gradients, and realistic active pressed states.
+   ========================================================================== */
+
+.btn-tactile {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+  cursor: pointer;
+}
+
+.btn-tactile:active {
+  transform: translateY(1px);
+}
+
+.btn-tactile:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Primary Button (Indigo / Permissa signature) */
+.btn-tactile-primary {
+  background: linear-gradient(180deg, #4f46e5 0%, #4338ca 100%);
+  color: #ffffff;
+  border: 1px solid #3730a3;
+  border-top-color: #6366f1;
+  border-bottom-color: #312e81;
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.28),
+    0 1px 2px 0 rgba(15, 23, 42, 0.12),
+    0 2px 4px -1px rgba(79, 70, 229, 0.28);
+}
+.btn-tactile-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #5c53f3 0%, #483cd6 100%);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.35),
+    0 3px 6px -1px rgba(15, 23, 42, 0.16),
+    0 4px 8px -2px rgba(79, 70, 229, 0.35);
+}
+.btn-tactile-primary:active:not(:disabled) {
+  background: #3730a3;
+  box-shadow:
+    inset 0 2px 4px 0 rgba(15, 23, 42, 0.3),
+    0 1px 1px 0 rgba(15, 23, 42, 0.05);
+  transform: translateY(1px);
+}
+
+/* Secondary Button (Crisp Ceramic White) */
+.btn-tactile-secondary {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  color: #1e293b;
+  border: 1px solid #cbd5e1;
+  border-bottom-color: #94a3b8;
+  box-shadow:
+    inset 0 1px 0 0 #ffffff,
+    0 1px 2px 0 rgba(15, 23, 42, 0.06),
+    0 1px 1px 0 rgba(15, 23, 42, 0.04);
+}
+.btn-tactile-secondary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
+  border-color: #94a3b8;
+  border-bottom-color: #64748b;
+  color: #0f172a;
+  box-shadow:
+    inset 0 1px 0 0 #ffffff,
+    0 2px 4px -1px rgba(15, 23, 42, 0.08),
+    0 1px 2px 0 rgba(15, 23, 42, 0.05);
+}
+.btn-tactile-secondary:active:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  box-shadow:
+    inset 0 2px 3px 0 rgba(15, 23, 42, 0.1),
+    0 1px 1px 0 rgba(15, 23, 42, 0.03);
+  transform: translateY(1px);
+}
+
+/* Emerald Button (Approval & Clearance Sign-off) */
+.btn-tactile-emerald {
+  background: linear-gradient(180deg, #059669 0%, #047857 100%);
+  color: #ffffff;
+  border: 1px solid #065f46;
+  border-top-color: #10b981;
+  border-bottom-color: #064e3b;
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.28),
+    0 1px 2px 0 rgba(15, 23, 42, 0.12),
+    0 2px 4px -1px rgba(5, 150, 105, 0.28);
+}
+.btn-tactile-emerald:hover:not(:disabled) {
+  background: linear-gradient(180deg, #10b981 0%, #059669 100%);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.35),
+    0 3px 6px -1px rgba(15, 23, 42, 0.16),
+    0 4px 8px -2px rgba(5, 150, 105, 0.35);
+}
+.btn-tactile-emerald:active:not(:disabled) {
+  background: #047857;
+  box-shadow:
+    inset 0 2px 4px 0 rgba(15, 23, 42, 0.3),
+    0 1px 1px 0 rgba(15, 23, 42, 0.05);
+  transform: translateY(1px);
+}
+
+/* Purple Button (Legal Reviewer Adjudication) */
+.btn-tactile-purple {
+  background: linear-gradient(180deg, #7c3aed 0%, #6d28d9 100%);
+  color: #ffffff;
+  border: 1px solid #5b21b6;
+  border-top-color: #8b5cf6;
+  border-bottom-color: #4c1d95;
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.28),
+    0 1px 2px 0 rgba(15, 23, 42, 0.12),
+    0 2px 4px -1px rgba(124, 58, 237, 0.28);
+}
+.btn-tactile-purple:hover:not(:disabled) {
+  background: linear-gradient(180deg, #8b5cf6 0%, #7c3aed 100%);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.35),
+    0 3px 6px -1px rgba(15, 23, 42, 0.16),
+    0 4px 8px -2px rgba(124, 58, 237, 0.35);
+}
+.btn-tactile-purple:active:not(:disabled) {
+  background: #5b21b6;
+  box-shadow:
+    inset 0 2px 4px 0 rgba(15, 23, 42, 0.3),
+    0 1px 1px 0 rgba(15, 23, 42, 0.05);
+  transform: translateY(1px);
+}
+
+/* Blue Button (Parallel Web Systems API) */
+.btn-tactile-blue {
+  background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+  color: #ffffff;
+  border: 1px solid #1e40af;
+  border-top-color: #3b82f6;
+  border-bottom-color: #172554;
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.28),
+    0 1px 2px 0 rgba(15, 23, 42, 0.12),
+    0 2px 4px -1px rgba(37, 99, 235, 0.28);
+}
+.btn-tactile-blue:hover:not(:disabled) {
+  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.35),
+    0 3px 6px -1px rgba(15, 23, 42, 0.16),
+    0 4px 8px -2px rgba(37, 99, 235, 0.35);
+}
+.btn-tactile-blue:active:not(:disabled) {
+  background: #1e40af;
+  box-shadow:
+    inset 0 2px 4px 0 rgba(15, 23, 42, 0.3),
+    0 1px 1px 0 rgba(15, 23, 42, 0.05);
+  transform: translateY(1px);
+}
+
+/* Danger Button (Kill switch / delete) */
+.btn-tactile-danger {
+  background: linear-gradient(180deg, #dc2626 0%, #b91c1c 100%);
+  color: #ffffff;
+  border: 1px solid #991b1b;
+  border-top-color: #ef4444;
+  border-bottom-color: #7f1d1d;
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.28),
+    0 1px 2px 0 rgba(15, 23, 42, 0.12),
+    0 2px 4px -1px rgba(220, 38, 38, 0.28);
+}
+.btn-tactile-danger:hover:not(:disabled) {
+  background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.35),
+    0 3px 6px -1px rgba(15, 23, 42, 0.16),
+    0 4px 8px -2px rgba(220, 38, 38, 0.35);
+}
+.btn-tactile-danger:active:not(:disabled) {
+  background: #991b1b;
+  box-shadow:
+    inset 0 2px 4px 0 rgba(15, 23, 42, 0.3),
+    0 1px 1px 0 rgba(15, 23, 42, 0.05);
+  transform: translateY(1px);
+}

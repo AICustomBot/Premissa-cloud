@@ -1,0 +1,175 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Health check / Connection test endpoint
+    match /test/{testId} {
+      allow get: if true;
+    }
+
+    // --- Hardened Global Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'ehabkhedrfathy@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // --- 1. User Profiles & PII Isolation ---
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['id', 'name', 'email', 'role', 'organizationId', 'createdAt']) &&
+        data.id is string && data.id == request.auth.uid &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+        data.email is string && data.email.size() <= 150 &&
+        data.role in ['PRODUCER', 'REVIEWER', 'OWNER'] &&
+        data.organizationId is string && isValidId(data.organizationId) &&
+        data.createdAt is string;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow list: if isSignedIn() && (resource.data.id == request.auth.uid || isAdmin());
+      allow create: if isOwner(userId) && isValidUserProfile(incoming());
+      allow update: if isOwner(userId) && isValidUserProfile(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'role', 'organizationName', 'updatedAt']);
+      allow delete: if isAdmin();
+    }
+
+    // --- 2. Organizations ---
+    function isValidOrganization(data) {
+      return data.keys().hasAll(['id', 'name', 'ownerId', 'createdAt', 'updatedAt']) &&
+        isValidId(data.id) &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+        isValidId(data.ownerId) &&
+        data.createdAt is string &&
+        data.updatedAt is string;
+    }
+
+    match /organizations/{orgId} {
+      allow get: if isSignedIn() && isValidId(orgId);
+      allow list: if isSignedIn() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidId(orgId) && incoming().ownerId == request.auth.uid && isValidOrganization(incoming());
+      allow update: if isSignedIn() && isValidId(orgId) && isValidOrganization(incoming()) &&
+        (existing().ownerId == request.auth.uid || isAdmin()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'updatedAt']);
+      allow delete: if isAdmin();
+    }
+
+    // --- 3. Projects ---
+    function isValidProject(data) {
+      return data.keys().hasAll(['id', 'organizationId', 'title', 'jurisdiction', 'createdBy', 'version', 'isRunApproved', 'createdAt', 'updatedAt']) &&
+        isValidId(data.id) &&
+        isValidId(data.organizationId) &&
+        data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+        data.jurisdiction in ['US', 'UK', 'EU', 'GLOBAL'] &&
+        isValidId(data.createdBy) &&
+        data.version is number &&
+        data.isRunApproved is bool &&
+        data.createdAt is string &&
+        data.updatedAt is string;
+    }
+
+    match /projects/{projectId} {
+      allow get: if isSignedIn() && isValidId(projectId);
+      allow list: if isSignedIn() && (
+        resource.data.createdBy == request.auth.uid ||
+        resource.data.organizationId != null ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() && isValidId(projectId) &&
+        incoming().createdBy == request.auth.uid &&
+        isValidProject(incoming());
+      
+      // Tiered update: Owner/Creator or Admin can update metadata or seal run
+      allow update: if isSignedIn() && isValidId(projectId) && isValidProject(incoming()) && (
+        isAdmin() || (
+          // Standard update requires matching creator and non-sealed or action
+          (incoming().createdBy == existing().createdBy) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['title', 'jurisdiction', 'version', 'isRunApproved', 'budgetUsed', 'updatedAt'])
+        )
+      );
+      allow delete: if isAdmin();
+
+      // --- 4. Subcollection: Clearance Entities ---
+      function isValidClearanceEntity(data) {
+        return data.keys().hasAll(['id', 'projectId', 'canonicalName', 'type', 'initialProposedStatus', 'rationale', 'confirmedByProducer', 'updatedAt']) &&
+          isValidId(data.id) &&
+          data.projectId == projectId &&
+          data.canonicalName is string && data.canonicalName.size() > 0 && data.canonicalName.size() <= 200 &&
+          data.type in ['PERSON_CHARACTER', 'BRAND_BUSINESS_PRODUCT', 'PRODUCTION_TITLE'] &&
+          data.initialProposedStatus in ['RESEARCH_CLEARED', 'NEEDS_LICENCE', 'NEEDS_REWRITE', 'BLOCKED', 'INSUFFICIENT_EVIDENCE'] &&
+          data.rationale is string && data.rationale.size() <= 2000 &&
+          data.confirmedByProducer is bool &&
+          data.updatedAt is string;
+      }
+
+      match /entities/{entityId} {
+        allow get: if isSignedIn() && isValidId(projectId) && isValidId(entityId);
+        allow list: if isSignedIn() && isValidId(projectId);
+        allow create: if isSignedIn() && isValidId(projectId) && isValidId(entityId) &&
+          isValidClearanceEntity(incoming());
+
+        // Action-based updates
+        allow update: if isSignedIn() && isValidId(projectId) && isValidId(entityId) &&
+          isValidClearanceEntity(incoming()) &&
+          incoming().id == existing().id &&
+          incoming().projectId == existing().projectId && (
+            isAdmin() || (
+              // Action: Producer confirmation
+              incoming().diff(existing()).affectedKeys().hasOnly(['confirmedByProducer', 'updatedAt']) ||
+              // Action: Reviewer notes & status override
+              incoming().diff(existing()).affectedKeys().hasOnly(['initialProposedStatus', 'reviewerNotes', 'updatedAt']) ||
+              // Action: Entity edit/remedy
+              incoming().diff(existing()).affectedKeys().hasOnly(['canonicalName', 'type', 'initialProposedStatus', 'reviewerNotes', 'rewriteSuggestion', 'confirmedByProducer', 'updatedAt'])
+            )
+          );
+
+        allow delete: if isAdmin();
+      }
+
+      // --- 5. Subcollection: Audit Logs ---
+      function isValidAuditLog(data) {
+        return data.keys().hasAll(['id', 'organizationId', 'actorId', 'action', 'timestamp']) &&
+          isValidId(data.id) &&
+          isValidId(data.organizationId) &&
+          data.actorId is string && data.actorId.size() <= 128 &&
+          data.action is string && data.action.size() <= 100 &&
+          data.timestamp is string;
+      }
+
+      match /auditLogs/{logId} {
+        allow get: if isSignedIn() && isValidId(projectId) && isValidId(logId);
+        allow list: if isSignedIn() && isValidId(projectId);
+        // Audit logs are strictly append-only
+        allow create: if isSignedIn() && isValidId(projectId) && isValidId(logId) && isValidAuditLog(incoming());
+        allow update, delete: if false;
+      }
+    }
+  }
+}

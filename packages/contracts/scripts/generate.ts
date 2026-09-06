@@ -5,7 +5,7 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { zodToJsonSchema } from "zod-to-json-schema"
-import * as contracts from "../src/index.js"
+import * as contracts from "../src/index"
 
 const OUT_DIR = join(process.cwd(), "..", "..", "docs", "api", "json-schema")
 const check = process.argv.includes("--check")

@@ -1,0 +1,11 @@
+{
+  "$ref": "#/definitions/IdempotencyKey",
+  "definitions": {
+    "IdempotencyKey": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 128
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import "./globals.css";
 
 export const metadata: Metadata = {
   title: "PERMISSA",
@@ -12,9 +13,11 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1 };
 
+export const dynamic = "force-dynamic";
+
 const RootLayout = ({ children }: { children: ReactNode }) => (
-  <html lang="en">
-    <body>{children}</body>
+  <html lang="en" suppressHydrationWarning>
+    <body suppressHydrationWarning>{children}</body>
   </html>
 );
 

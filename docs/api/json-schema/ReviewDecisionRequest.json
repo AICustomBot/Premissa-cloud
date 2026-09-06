@@ -1,0 +1,30 @@
+{
+  "$ref": "#/definitions/ReviewDecisionRequest",
+  "definitions": {
+    "ReviewDecisionRequest": {
+      "type": "object",
+      "properties": {
+        "reviewId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 1000
+        }
+      },
+      "required": [
+        "reviewId",
+        "expectedVersion",
+        "reason"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

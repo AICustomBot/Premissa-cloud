@@ -1,0 +1,67 @@
+{
+  "$ref": "#/definitions/ScriptVersion",
+  "definitions": {
+    "ScriptVersion": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "$ref": "#/definitions/ScriptVersion/properties/createdAt"
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "projectId": {
+          "$ref": "#/definitions/ScriptVersion/properties/id"
+        },
+        "sourceType": {
+          "type": "string",
+          "enum": [
+            "PDF",
+            "FDX"
+          ]
+        },
+        "checksumSha256": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "pageCount": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 20
+        },
+        "versionNumber": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "sceneCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "version",
+        "createdAt",
+        "updatedAt",
+        "id",
+        "projectId",
+        "sourceType",
+        "checksumSha256",
+        "pageCount",
+        "versionNumber",
+        "sceneCount"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

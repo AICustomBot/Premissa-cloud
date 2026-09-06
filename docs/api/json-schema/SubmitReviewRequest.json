@@ -1,0 +1,67 @@
+{
+  "$ref": "#/definitions/SubmitReviewRequest",
+  "definitions": {
+    "SubmitReviewRequest": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "findingId": {
+                "$ref": "#/definitions/SubmitReviewRequest/properties/runId"
+              },
+              "expectedVersion": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "newStatus": {
+                "type": "string",
+                "enum": [
+                  "RESEARCH_CLEARED",
+                  "NEEDS_LICENCE",
+                  "NEEDS_REWRITE",
+                  "BLOCKED",
+                  "INSUFFICIENT_EVIDENCE"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 10,
+                "maxLength": 1000
+              },
+              "addedCitationUrls": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "maxItems": 10,
+                "default": []
+              }
+            },
+            "required": [
+              "findingId",
+              "expectedVersion",
+              "newStatus",
+              "reason"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 50
+        }
+      },
+      "required": [
+        "runId",
+        "changes"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

@@ -1,0 +1,37 @@
+{
+  "$ref": "#/definitions/CreateUploadRequest",
+  "definitions": {
+    "CreateUploadRequest": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "sourceType": {
+          "type": "string",
+          "enum": [
+            "PDF",
+            "FDX"
+          ]
+        },
+        "declaredBytes": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 20000000
+        },
+        "declaredPageCount": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 20
+        }
+      },
+      "required": [
+        "sourceType",
+        "declaredBytes"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

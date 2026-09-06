@@ -1,0 +1,23 @@
+{
+  "$ref": "#/definitions/RunState",
+  "definitions": {
+    "RunState": {
+      "type": "string",
+      "enum": [
+        "CREATED",
+        "QUEUED",
+        "PREFLIGHT",
+        "RUNNING",
+        "PAUSED_FAILURE",
+        "PAUSED_BUDGET",
+        "CANCELLED_PARTIAL",
+        "DRAFT_READY",
+        "PRODUCER_REVIEW",
+        "CHANGES_REQUESTED",
+        "PROFESSIONAL_REVIEW",
+        "APPROVED"
+      ]
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

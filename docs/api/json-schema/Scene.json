@@ -1,0 +1,49 @@
+{
+  "$ref": "#/definitions/Scene",
+  "definitions": {
+    "Scene": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "scriptVersionId": {
+          "$ref": "#/definitions/Scene/properties/id"
+        },
+        "ordinal": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "heading": {
+          "type": "string"
+        },
+        "sourceRange": {
+          "type": "object",
+          "properties": {
+            "start": {
+              "type": "integer"
+            },
+            "end": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "start",
+            "end"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "scriptVersionId",
+        "ordinal",
+        "heading",
+        "sourceRange"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

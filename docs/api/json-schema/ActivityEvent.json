@@ -1,0 +1,92 @@
+{
+  "$ref": "#/definitions/ActivityEvent",
+  "definitions": {
+    "ActivityEvent": {
+      "type": "object",
+      "properties": {
+        "eventId": {
+          "type": "string"
+        },
+        "eventType": {
+          "type": "string",
+          "enum": [
+            "RUN_CREATED",
+            "RUN_QUEUED",
+            "PREFLIGHT_PASSED",
+            "PREFLIGHT_DEGRADED",
+            "PREFLIGHT_BLOCKED",
+            "SPECIALIST_STARTED",
+            "SPECIALIST_COMPLETED",
+            "SEARCH_COMPLETED",
+            "SEARCH_FAILED",
+            "EVIDENCE_GATE_ACCEPTED",
+            "EVIDENCE_GATE_DOWNGRADED",
+            "EVIDENCE_GATE_REJECTED",
+            "CHECKPOINT_SAVED",
+            "BUDGET_THRESHOLD_REACHED",
+            "RUN_PAUSED",
+            "RUN_RESUMED",
+            "RUN_CANCELLED",
+            "DRAFT_READY",
+            "REVIEW_REQUESTED",
+            "REVIEW_RETURNED",
+            "REVIEW_APPROVED",
+            "INJECTION_ATTEMPT_IGNORED"
+          ]
+        },
+        "schemaVersion": {
+          "type": "string"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "organizationId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "projectId": {
+          "$ref": "#/definitions/ActivityEvent/properties/organizationId"
+        },
+        "runId": {
+          "$ref": "#/definitions/ActivityEvent/properties/organizationId"
+        },
+        "correlationId": {
+          "type": "string"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "milestone": {
+          "type": "boolean"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          "default": {}
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "occurredAt",
+        "organizationId",
+        "projectId",
+        "runId",
+        "correlationId",
+        "sequence",
+        "milestone"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

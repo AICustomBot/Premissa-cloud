@@ -1,0 +1,46 @@
+{
+  "$ref": "#/definitions/AuditLogEntry",
+  "definitions": {
+    "AuditLogEntry": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "organizationId": {
+          "$ref": "#/definitions/AuditLogEntry/properties/id"
+        },
+        "projectId": {
+          "$ref": "#/definitions/AuditLogEntry/properties/id"
+        },
+        "actorId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {}
+        }
+      },
+      "required": [
+        "id",
+        "organizationId",
+        "actorId",
+        "action",
+        "timestamp",
+        "metadata"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

@@ -1,0 +1,37 @@
+{
+  "$ref": "#/definitions/CreateUploadResponse",
+  "definitions": {
+    "CreateUploadResponse": {
+      "type": "object",
+      "properties": {
+        "uploadId": {
+          "type": "string"
+        },
+        "signedUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "objectKey": {
+          "type": "string"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "maxBytes": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "uploadId",
+        "signedUrl",
+        "objectKey",
+        "expiresAt",
+        "maxBytes"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

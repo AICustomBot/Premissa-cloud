@@ -1,0 +1,116 @@
+{
+  "$ref": "#/definitions/Citation",
+  "definitions": {
+    "Citation": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "taskId": {
+          "$ref": "#/definitions/Citation/properties/id"
+        },
+        "originalUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "resolvedUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "resolvedDomain": {
+          "type": "string"
+        },
+        "controllingOwner": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "excerpt": {
+          "type": "string",
+          "maxLength": 1200
+        },
+        "sourceTier": {
+          "type": "string",
+          "enum": [
+            "TIER_1",
+            "TIER_2",
+            "TIER_3"
+          ]
+        },
+        "claimType": {
+          "type": "string",
+          "enum": [
+            "CURRENT_STATUS",
+            "HISTORICAL"
+          ]
+        },
+        "query": {
+          "type": "string"
+        },
+        "publishedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updatedAt": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Citation/properties/publishedAt/anyOf/0"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retrievedAt": {
+          "$ref": "#/definitions/Citation/properties/publishedAt/anyOf/0"
+        },
+        "registryRecordId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "contentHash": {
+          "type": "string"
+        },
+        "reachable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "taskId",
+        "originalUrl",
+        "resolvedUrl",
+        "resolvedDomain",
+        "controllingOwner",
+        "title",
+        "excerpt",
+        "sourceTier",
+        "claimType",
+        "query",
+        "publishedAt",
+        "updatedAt",
+        "retrievedAt",
+        "registryRecordId",
+        "contentHash",
+        "reachable"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

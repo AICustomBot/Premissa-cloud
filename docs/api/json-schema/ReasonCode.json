@@ -1,0 +1,34 @@
+{
+  "$ref": "#/definitions/ReasonCode",
+  "definitions": {
+    "ReasonCode": {
+      "type": "string",
+      "enum": [
+        "EVIDENCE_MISSING",
+        "EVIDENCE_WEAK",
+        "EVIDENCE_CONFLICT",
+        "EVIDENCE_EXPIRED",
+        "EVIDENCE_NOT_INDEPENDENT",
+        "ENTITY_MATCH_WEAK",
+        "CONTEXT_INCOMPLETE",
+        "SOURCE_TIER_INSUFFICIENT",
+        "BUDGET_LIMIT",
+        "PROVIDER_FAILED",
+        "LICENCE_SIGNAL_SUPPORTED",
+        "REWRITE_PATH_SUPPORTED",
+        "STRONG_CONFLICT",
+        "SEVERE_CONTEXT",
+        "PROFESSIONAL_CONFIRMATION_REQUIRED",
+        "PUBLICATION_DATE_UNKNOWN",
+        "CITATION_UNREACHABLE",
+        "RETRIEVAL_AGE_EXCEEDED",
+        "REGISTRY_REFRESH_REQUIRED",
+        "CURRENT_SOURCE_TOO_OLD",
+        "HISTORICAL_PRIMARY_ACCEPTED",
+        "DISCOVERY_SOURCE_ONLY",
+        "CONFIDENCE_BELOW_CLEARED_THRESHOLD"
+      ]
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

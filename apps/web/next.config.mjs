@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "standalone",
-  transpilePackages: ["@permissa/contracts"],
+  transpilePackages: ["@permissa/contracts", "@permissa/policy"],
 };
 
 export default nextConfig;

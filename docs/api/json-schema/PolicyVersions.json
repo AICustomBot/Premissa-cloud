@@ -1,0 +1,29 @@
+{
+  "$ref": "#/definitions/PolicyVersions",
+  "definitions": {
+    "PolicyVersions": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string"
+        },
+        "evidencePolicyVersion": {
+          "type": "string"
+        },
+        "confidenceFormulaVersion": {
+          "type": "string"
+        },
+        "promptVersion": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "evidencePolicyVersion",
+        "confidenceFormulaVersion"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

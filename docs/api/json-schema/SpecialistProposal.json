@@ -1,0 +1,88 @@
+{
+  "$ref": "#/definitions/SpecialistProposal",
+  "definitions": {
+    "SpecialistProposal": {
+      "type": "object",
+      "properties": {
+        "entityId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "proposedStatus": {
+          "type": "string",
+          "enum": [
+            "RESEARCH_CLEARED",
+            "NEEDS_LICENCE",
+            "NEEDS_REWRITE",
+            "BLOCKED",
+            "INSUFFICIENT_EVIDENCE"
+          ]
+        },
+        "rationale": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "citationIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SpecialistProposal/properties/entityId"
+          }
+        },
+        "conflictsDetected": {
+          "type": "boolean"
+        },
+        "severeContext": {
+          "type": "boolean"
+        },
+        "entityMatchQuality": {
+          "type": "string",
+          "enum": [
+            "EXACT_CORROBORATED",
+            "STRONG",
+            "PARTIAL",
+            "WEAK"
+          ]
+        },
+        "contextComplete": {
+          "type": "boolean"
+        },
+        "rewritePath": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 600
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "licenceSignal": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 600
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "entityId",
+        "proposedStatus",
+        "rationale",
+        "citationIds",
+        "conflictsDetected",
+        "severeContext",
+        "entityMatchQuality",
+        "contextComplete",
+        "rewritePath",
+        "licenceSignal"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

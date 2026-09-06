@@ -1,0 +1,14 @@
+{
+  "$ref": "#/definitions/EntityType",
+  "definitions": {
+    "EntityType": {
+      "type": "string",
+      "enum": [
+        "PERSON_CHARACTER",
+        "BRAND_BUSINESS_PRODUCT",
+        "PRODUCTION_TITLE"
+      ]
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

@@ -1,0 +1,66 @@
+{
+  "$ref": "#/definitions/Project",
+  "definitions": {
+    "Project": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "organizationId": {
+          "$ref": "#/definitions/Project/properties/id"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "jurisdiction": {
+          "type": "string",
+          "enum": [
+            "US"
+          ],
+          "default": "US"
+        },
+        "createdBy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 1
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "$ref": "#/definitions/Project/properties/createdAt"
+        },
+        "deletedAt": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Project/properties/createdAt"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "id",
+        "organizationId",
+        "title",
+        "createdBy",
+        "createdAt",
+        "updatedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

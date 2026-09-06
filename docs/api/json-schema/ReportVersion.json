@@ -1,0 +1,41 @@
+{
+  "$ref": "#/definitions/ReportVersion",
+  "definitions": {
+    "ReportVersion": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "projectId": {
+          "$ref": "#/definitions/ReportVersion/properties/id"
+        },
+        "runId": {
+          "$ref": "#/definitions/ReportVersion/properties/id"
+        },
+        "versionNumber": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "approvedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "pdfAvailable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "projectId",
+        "runId",
+        "versionNumber",
+        "approvedAt",
+        "pdfAvailable"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

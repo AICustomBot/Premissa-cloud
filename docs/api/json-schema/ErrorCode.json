@@ -1,0 +1,35 @@
+{
+  "$ref": "#/definitions/ErrorCode",
+  "definitions": {
+    "ErrorCode": {
+      "type": "string",
+      "enum": [
+        "AUTH_REQUIRED",
+        "FORBIDDEN",
+        "UPLOAD_EXPIRED",
+        "FILE_TYPE_INVALID",
+        "FILE_SIGNATURE_INVALID",
+        "PAGE_LIMIT_EXCEEDED",
+        "PDF_LOCKED",
+        "FDX_PARSE_FAILED",
+        "ENTITY_REGISTER_UNCONFIRMED",
+        "ENTITY_LIMIT_EXCEEDED",
+        "RUN_ALREADY_ACTIVE",
+        "RUN_QUOTA_EXCEEDED",
+        "GEMINI_UNAVAILABLE",
+        "PARALLEL_UNAVAILABLE",
+        "GRAFANA_DEGRADED",
+        "PREFLIGHT_BLOCKED",
+        "EVIDENCE_INSUFFICIENT",
+        "EVIDENCE_CONFLICT",
+        "BUDGET_EXCEEDED",
+        "RUN_TIMEOUT",
+        "INVALID_STATE_TRANSITION",
+        "VERSION_CONFLICT",
+        "CURSOR_INVALID",
+        "VALIDATION_FAILED"
+      ]
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
