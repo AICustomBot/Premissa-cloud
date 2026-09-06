@@ -20,6 +20,13 @@ export const SourceTier = z.enum(["TIER_1", "TIER_2", "TIER_3"]);
 
 export const ClaimType = z.enum(["CURRENT_STATUS", "HISTORICAL"]);
 
+export const DeltaChangeType = z.enum([
+  "ADDED",
+  "MODIFIED",
+  "DELETED",
+  "UNTOUCHED",
+]);
+
 export const RunState = z.enum([
   "CREATED",
   "QUEUED",

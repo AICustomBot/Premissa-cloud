@@ -66,3 +66,8 @@ export const SpecialistProposal = z.object({
   rewritePath: z.string().max(600).nullable(),
   licenceSignal: z.string().max(600).nullable(),
 });
+
+export type Citation = z.infer<typeof Citation>;
+export type ConfidenceFactors = z.infer<typeof ConfidenceFactors>;
+export type ConfidenceResult = z.infer<typeof ConfidenceResult>;
+export type SpecialistProposal = z.infer<typeof SpecialistProposal>;

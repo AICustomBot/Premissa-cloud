@@ -111,7 +111,14 @@ export async function signInWithGoogle(): Promise<User | null> {
   try {
     const result = await signInWithPopup(auth, googleProvider);
     return result.user;
-  } catch (error) {
+  } catch (error: any) {
+    if (
+      error?.code === "auth/popup-closed-by-user" ||
+      error?.code === "auth/cancelled-popup-request"
+    ) {
+      // Ignore user cancellation
+      throw error;
+    }
     console.error("Google sign-in error:", error);
     throw error;
   }

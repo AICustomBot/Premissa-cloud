@@ -10,6 +10,7 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  deleteDoc,
   collection,
   onSnapshot,
   query,
@@ -130,6 +131,56 @@ export async function updateEntityInFirestore(
     await updateDoc(entityRef, payload);
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, entityPath);
+  }
+}
+
+/**
+ * Deletes a single clearance entity from Firestore subcollection
+ */
+export async function deleteEntityInFirestore(
+  projectId: string,
+  entityId: string,
+): Promise<void> {
+  if (!auth.currentUser) {
+    return;
+  }
+  const entityPath = `projects/${projectId}/entities/${entityId}`;
+  try {
+    const entityRef = doc(db, "projects", projectId, "entities", entityId);
+    await deleteDoc(entityRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, entityPath);
+  }
+}
+
+/**
+ * Saves a new or survivor clearance entity in Firestore subcollection
+ */
+export async function saveNewEntityToFirestore(
+  projectId: string,
+  entity: ClearanceItem,
+): Promise<void> {
+  if (!auth.currentUser) {
+    return;
+  }
+  const entityPath = `projects/${projectId}/entities/${entity.id}`;
+  try {
+    const entityRef = doc(db, "projects", projectId, "entities", entity.id);
+    const now = new Date().toISOString();
+    await setDoc(entityRef, {
+      id: entity.id,
+      projectId,
+      canonicalName: entity.canonicalName,
+      type: entity.type,
+      initialProposedStatus: entity.initialProposedStatus,
+      rationale: entity.rationale,
+      rewriteSuggestion: entity.rewriteSuggestion || "",
+      confirmedByProducer: Boolean(entity.confirmedByProducer),
+      reviewerNotes: entity.reviewerNotes || "",
+      updatedAt: now,
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, entityPath);
   }
 }
 

@@ -614,6 +614,7 @@ CITATIONS: ${entity.citations.map((c) => `${c.title} (${c.url})`).join("; ")}`;
                     placeholder="Enter formal clearance docket or grounds..."
                     value={overrideReason}
                     onChange={(e) => setOverrideReason(e.target.value)}
+                    suppressHydrationWarning
                     className="w-full bg-white border border-slate-300 text-xs text-slate-900 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-600"
                   />
                 </div>

@@ -11,10 +11,18 @@ import {
   FileCheck2,
   Activity,
   Milestone,
+  GitCompare,
 } from "lucide-react";
 
 export type NavTab =
-  "board" | "entities" | "script" | "review" | "report" | "ops" | "roadmap";
+  | "board"
+  | "entities"
+  | "script"
+  | "differential"
+  | "review"
+  | "report"
+  | "ops"
+  | "roadmap";
 
 interface NavbarProps {
   currentTab: NavTab;
@@ -39,6 +47,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: "board", label: "Risk Board", icon: Layers },
     { id: "entities", label: "Entity Register", icon: ClipboardCheck },
     { id: "script", label: "Screenplay Ingestion", icon: FileText },
+    { id: "differential", label: "Revision Delta", icon: GitCompare },
     { id: "review", label: "Legal Review", icon: UserCheck },
     { id: "report", label: "Clearance Report", icon: FileCheck2 },
     { id: "ops", label: "Operations & Safety", icon: Activity },

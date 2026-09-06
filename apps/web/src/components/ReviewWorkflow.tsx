@@ -343,6 +343,7 @@ export const ReviewWorkflow: React.FC<ReviewWorkflowProps> = ({
                   placeholder="legal.counsel@studioentertainment.com"
                   value={reviewerEmail}
                   onChange={(e) => setReviewerEmail(e.target.value)}
+                  suppressHydrationWarning
                   className="w-full bg-white border border-slate-300 rounded-lg px-3.5 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-100"
                 />
               </div>

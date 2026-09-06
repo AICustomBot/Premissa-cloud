@@ -203,9 +203,12 @@ export const RiskBoard: React.FC<RiskBoardProps> = ({
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" suppressHydrationWarning>
       {/* Header Banner */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-7 shadow-xs">
+      <div
+        className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-7 shadow-xs"
+        suppressHydrationWarning
+      >
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center space-x-2">
@@ -327,8 +330,14 @@ export const RiskBoard: React.FC<RiskBoardProps> = ({
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white border border-slate-200 p-3 sm:p-3.5 rounded-xl shadow-2xs">
-        <div className="flex items-center space-x-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+      <div
+        className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white border border-slate-200 p-3 sm:p-3.5 rounded-xl shadow-2xs"
+        suppressHydrationWarning
+      >
+        <div
+          className="flex items-center space-x-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0 scrollbar-none"
+          suppressHydrationWarning
+        >
           <Filter className="w-4 h-4 text-slate-400 shrink-0" />
           <span className="text-xs text-slate-600 font-semibold">Filter:</span>
           <button
@@ -360,13 +369,14 @@ export const RiskBoard: React.FC<RiskBoardProps> = ({
             )}
         </div>
 
-        <div className="relative w-full sm:w-72">
+        <div className="relative w-full sm:w-72" suppressHydrationWarning>
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
           <input
             type="text"
             placeholder="Search findings by entity, type, or law..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            suppressHydrationWarning
             className="w-full pl-9 pr-8 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-100"
           />
           {searchQuery && (

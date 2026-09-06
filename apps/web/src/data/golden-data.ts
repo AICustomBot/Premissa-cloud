@@ -6,10 +6,10 @@ export interface SceneItem {
   timeOfDay: string;
   summary: string;
   lines: {
-    speaker?: string;
+    speaker?: string | undefined;
     text: string;
-    isArabic?: boolean;
-    isWarning?: boolean;
+    isArabic?: boolean | undefined;
+    isWarning?: boolean | undefined;
   }[];
   detectedEntityIds: string[];
 }
@@ -42,7 +42,7 @@ export interface ClearanceItem {
     | "BLOCKED"
     | "INSUFFICIENT_EVIDENCE";
   rationale: string;
-  rewriteSuggestion?: string;
+  rewriteSuggestion?: string | undefined;
   citations: GoldenCitation[];
   confidenceInput: {
     authority:
@@ -68,7 +68,8 @@ export interface ClearanceItem {
     evidenceExpired: boolean;
   };
   confirmedByProducer: boolean;
-  reviewerNotes?: string;
+  reviewerNotes?: string | undefined;
+  version?: number | undefined;
 }
 
 export const GOLDEN_SCRIPT_METADATA = {
@@ -896,7 +897,7 @@ export const IMPLEMENTATION_ROADMAP: TrancheRoadmapItem[] = [
       "Run budget enforcement, parallel call caps, content-free audit logs, retention & deletion worker, emergency kill switches.",
     exitCriteria:
       "Budget pause and provider outage recover smoothly; zero PII or screenplay text in logs.",
-    status: "ACTIVE",
+    status: "COMPLETED",
     deliverables: [
       "Budget & Quota Controller",
       "Content-Free Audit Logger",
@@ -907,17 +908,33 @@ export const IMPLEMENTATION_ROADMAP: TrancheRoadmapItem[] = [
   {
     id: "tranche-8",
     number: 8,
+    title: "Differential Clearance & Revision Delta Engine",
+    scope:
+      "Script delta comparison across drafts (White, Pink, Blue revisions), scene heading & line diffing, automatic carry-forward of passing clearance findings, selective research dispatch.",
+    exitCriteria:
+      "Differential clearance carries forward untouched findings, dispatches only new/modified entities, and cuts redundant search cost by >80%.",
+    status: "COMPLETED",
+    deliverables: [
+      "Script Delta Comparator",
+      "Scene & Heading Diff Viewer",
+      "Clearance Carry-Forward Engine",
+      "Draft Chain of Custody & Hash Audit",
+    ],
+  },
+  {
+    id: "tranche-9",
+    number: 9,
     title: "Submission & Release Readiness",
     scope:
-      "Full golden e2e run, Playwright coverage, accessibility audit, claims-evidence matrix, cold-start demo walkthrough.",
+      "Full golden e2e run, Playwright coverage, accessibility audit, claims-evidence matrix, cold-start demo walkthrough, production deployment checklist.",
     exitCriteria:
-      "Cold-start demo completes within budget; all 12 oracle entities validated.",
+      "Cold-start demo completes within budget; all oracle entities validated; 100% test coverage gates hold.",
     status: "ACTIVE",
     deliverables: [
       "E2E Verification Suite",
       "WCAG AA Compliance",
       "Golden Oracle Verification",
-      "Cold-Start Demo Pipeline",
+      "Production Release Checklist",
     ],
   },
 ];

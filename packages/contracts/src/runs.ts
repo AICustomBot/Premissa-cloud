@@ -67,3 +67,11 @@ export const BudgetRequest = z.object({
   requestedCostCapUsd: z.number().positive().max(10),
   justification: z.string().min(10).max(1000),
 });
+
+export type ClearanceRun = z.infer<typeof ClearanceRun>;
+export type Finding = z.infer<typeof Finding>;
+export type RunBudget = z.infer<typeof RunBudget>;
+export type RunCheckpoint = z.infer<typeof RunCheckpoint>;
+export type CreateRunRequest = z.infer<typeof CreateRunRequest>;
+export type ResumeRunRequest = z.infer<typeof ResumeRunRequest>;
+export type BudgetRequest = z.infer<typeof BudgetRequest>;

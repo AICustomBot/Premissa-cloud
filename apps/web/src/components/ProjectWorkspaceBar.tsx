@@ -562,6 +562,7 @@ export const ProjectWorkspaceBar: React.FC<ProjectWorkspaceBarProps> = ({
                   placeholder="e.g. Operation Darkstar"
                   value={newProjectTitle}
                   onChange={(e) => setNewProjectTitle(e.target.value)}
+                  suppressHydrationWarning
                   className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-100"
                 />
               </div>

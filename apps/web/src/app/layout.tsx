@@ -13,8 +13,6 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1 };
 
-export const dynamic = "force-dynamic";
-
 const RootLayout = ({ children }: { children: ReactNode }) => (
   <html lang="en" suppressHydrationWarning>
     <body suppressHydrationWarning>{children}</body>

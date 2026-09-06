@@ -42,7 +42,7 @@ export const CreateProjectRequest = z.object({
   authorizedUseConfirmed: z.boolean().optional().default(true),
 });
 
-export type CreateProjectRequest = z.infer<typeof CreateProjectRequest>;
+export type CreateProjectRequest = z.input<typeof CreateProjectRequest>;
 
 export const ProjectGrant = z.object({
   projectId: ProjectId,

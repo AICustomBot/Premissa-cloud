@@ -43,3 +43,7 @@ export const ActivityEvent = z.object({
     .record(z.union([z.string(), z.number(), z.boolean()]))
     .default({}),
 });
+
+export type ActivityEventType = z.infer<typeof ActivityEventType>;
+export type ActivityEvent = z.infer<typeof ActivityEvent>;
+

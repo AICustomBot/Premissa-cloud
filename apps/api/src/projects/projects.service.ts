@@ -1,27 +1,32 @@
 import {
   ForbiddenException,
   Injectable,
-  NotFoundException,
+  PreconditionFailedException,
 } from "@nestjs/common";
 import {
   AuditLogEntry,
+  CanonicalEntity,
+  ConfirmEntitiesRequest,
   CreateProjectRequest,
   generateUuidV7,
+  MergeEntitiesRequest,
   Organization,
+  PatchEntityRequest,
   Project,
   ProjectGrant,
+  Role,
+  ScriptVersion,
+  SourceType,
 } from "@permissa/contracts";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
+import { FirestoreService } from "../storage/firestore.service.js";
 
 @Injectable()
 export class ProjectsService {
-  private readonly organizations = new Map<string, Organization>();
-  private readonly projects = new Map<string, Project>();
-  private readonly grants = new Map<string, ProjectGrant[]>(); // projectId -> grants
-  private readonly auditLogs: AuditLogEntry[] = [];
-
-  constructor() {
-    // Seed default organization for initial tenant demonstration
+  constructor(
+    private readonly firestoreService: FirestoreService = new FirestoreService(),
+  ) {
+    // Bootstrap initial organization seed
     const defaultOrgId = generateUuidV7();
     const defaultOrg: Organization = {
       id: defaultOrgId,
@@ -30,29 +35,40 @@ export class ProjectsService {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    this.organizations.set(defaultOrgId, defaultOrg);
+    void this.firestoreService.saveOrganization(defaultOrg);
   }
 
-  getPrimaryOrgIdForUser(user: AuthenticatedUser): string {
-    if (user.organizationId && this.organizations.has(user.organizationId)) {
-      return user.organizationId;
+  async getPrimaryOrgIdForUser(user: AuthenticatedUser): Promise<string> {
+    if (user.organizationId) {
+      const existing = await this.firestoreService.getOrganization(
+        user.organizationId,
+      );
+      if (existing) return existing.id;
     }
-    // Find organization owned by user or return the first available
-    for (const org of this.organizations.values()) {
+
+    // Find organization owned by user
+    const allOrgs = await this.firestoreService.listOrganizations();
+    for (const org of allOrgs) {
       if (org.ownerId === user.uid) return org.id;
     }
+
     // Auto-bootstrap organization for new user
     const newOrgId = generateUuidV7();
+    const now = new Date().toISOString();
     const newOrg: Organization = {
       id: newOrgId,
       name: `${user.email.split("@")[0]}'s Studio`,
       ownerId: user.uid,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
     };
-    this.organizations.set(newOrgId, newOrg);
+    await this.firestoreService.saveOrganization(newOrg);
     return newOrgId;
   }
+
+  // ==========================================
+  // Project Management & Tenant Guards
+  // ==========================================
 
   async createProject(
     user: AuthenticatedUser,
@@ -60,8 +76,10 @@ export class ProjectsService {
   ): Promise<Project> {
     const validated = CreateProjectRequest.parse(dto);
 
-    // Verify tenant membership: cannot create projects in organizations you don't belong to
-    const org = this.organizations.get(validated.organizationId);
+    // Verify tenant boundary: user must own or belong to the organization
+    const org = await this.firestoreService.getOrganization(
+      validated.organizationId,
+    );
     if (!org) {
       throw new ForbiddenException("FORBIDDEN");
     }
@@ -85,7 +103,7 @@ export class ProjectsService {
       deletedAt: null,
     };
 
-    this.projects.set(projectId, project);
+    await this.firestoreService.saveProject(project);
 
     // Grant OWNER role to the creator
     const creatorGrant: ProjectGrant = {
@@ -94,9 +112,9 @@ export class ProjectsService {
       role: "OWNER",
       grantedAt: now,
     };
-    this.grants.set(projectId, [creatorGrant]);
+    await this.firestoreService.saveGrant(creatorGrant);
 
-    // Record immutable audit entry (content-free metadata)
+    // Record content-free audit entry
     const auditEntry: AuditLogEntry = {
       id: generateUuidV7(),
       organizationId: validated.organizationId,
@@ -109,7 +127,7 @@ export class ProjectsService {
         titleCharCount: validated.title.length,
       },
     };
-    this.auditLogs.push(auditEntry);
+    await this.firestoreService.appendAuditLog(auditEntry);
 
     return project;
   }
@@ -122,16 +140,19 @@ export class ProjectsService {
     items: Project[];
     page: { nextCursor: string | null; hasMore: boolean };
   }> {
+    const allProjects = await this.firestoreService.listProjects();
     const allowedProjects: Project[] = [];
 
-    for (const project of this.projects.values()) {
+    for (const project of allProjects) {
       if (project.deletedAt !== null) continue;
 
-      // Check if user has explicit grant or is org owner
-      const projectGrants = this.grants.get(project.id) ?? [];
-      const hasGrant = projectGrants.some((g) => g.userId === user.uid);
-      const isOrgOwner =
-        this.organizations.get(project.organizationId)?.ownerId === user.uid;
+      // Check grants or org ownership
+      const grants = await this.firestoreService.getGrants(project.id);
+      const hasGrant = grants.some((g) => g.userId === user.uid);
+      const org = await this.firestoreService.getOrganization(
+        project.organizationId,
+      );
+      const isOrgOwner = org?.ownerId === user.uid;
 
       if (hasGrant || isOrgOwner) {
         allowedProjects.push(project);
@@ -169,21 +190,16 @@ export class ProjectsService {
     projectId: string,
     includeDeleted = false,
   ): Promise<Project> {
-    const project = this.projects.get(projectId);
+    const project = await this.firestoreService.getProject(projectId);
     if (!project || (!includeDeleted && project.deletedAt !== null)) {
       throw new ForbiddenException("FORBIDDEN");
     }
 
-    // Check grant
-    const projectGrants = this.grants.get(projectId) ?? [];
-    const hasGrant = projectGrants.some((g) => g.userId === user.uid);
-    const isOrgOwner =
-      this.organizations.get(project.organizationId)?.ownerId === user.uid;
-
-    if (!hasGrant && !isOrgOwner) {
-      throw new ForbiddenException("FORBIDDEN");
-    }
-
+    await this.assertProjectAccess(user, project, [
+      "OWNER",
+      "PRODUCER",
+      "REVIEWER",
+    ]);
     return project;
   }
 
@@ -191,29 +207,25 @@ export class ProjectsService {
     user: AuthenticatedUser,
     projectId: string,
   ): Promise<void> {
-    const project = this.projects.get(projectId);
+    const project = await this.firestoreService.getProject(projectId);
     if (!project || project.deletedAt !== null) {
       throw new ForbiddenException("FORBIDDEN");
     }
 
-    // Deletion requires OWNER role on the project
-    const projectGrants = this.grants.get(projectId) ?? [];
-    const userGrant = projectGrants.find((g) => g.userId === user.uid);
-    const isOrgOwner =
-      this.organizations.get(project.organizationId)?.ownerId === user.uid;
-
-    const isProjectOwner = userGrant?.role === "OWNER" || isOrgOwner;
-
-    if (!isProjectOwner) {
-      throw new ForbiddenException("FORBIDDEN");
-    }
+    // Deletion strictly requires OWNER role
+    await this.assertProjectAccess(user, project, ["OWNER"]);
 
     const now = new Date().toISOString();
-    project.deletedAt = now;
-    project.version += 1;
-    project.updatedAt = now;
+    const updatedProject: Project = {
+      ...project,
+      deletedAt: now,
+      version: project.version + 1,
+      updatedAt: now,
+    };
 
-    // Record audit entry
+    await this.firestoreService.saveProject(updatedProject, project.version);
+
+    // Record content-free audit entry
     const auditEntry: AuditLogEntry = {
       id: generateUuidV7(),
       organizationId: project.organizationId,
@@ -222,10 +234,10 @@ export class ProjectsService {
       action: "PROJECT_DELETED",
       timestamp: now,
       metadata: {
-        version: project.version,
+        version: updatedProject.version,
       },
     };
-    this.auditLogs.push(auditEntry);
+    await this.firestoreService.appendAuditLog(auditEntry);
   }
 
   async grantRole(
@@ -235,19 +247,9 @@ export class ProjectsService {
     role: "OWNER" | "PRODUCER" | "REVIEWER",
   ): Promise<ProjectGrant> {
     const project = await this.getProject(user, projectId);
-    const projectGrants = this.grants.get(projectId) ?? [];
-    const userGrant = projectGrants.find((g) => g.userId === user.uid);
-    const isOrgOwner =
-      this.organizations.get(project.organizationId)?.ownerId === user.uid;
-
-    if (userGrant?.role !== "OWNER" && !isOrgOwner) {
-      throw new ForbiddenException("FORBIDDEN");
-    }
+    await this.assertProjectAccess(user, project, ["OWNER"]);
 
     const now = new Date().toISOString();
-    const existingIdx = projectGrants.findIndex(
-      (g) => g.userId === targetUserId,
-    );
     const newGrant: ProjectGrant = {
       projectId,
       userId: targetUserId,
@@ -255,12 +257,7 @@ export class ProjectsService {
       grantedAt: now,
     };
 
-    if (existingIdx >= 0) {
-      projectGrants[existingIdx] = newGrant;
-    } else {
-      projectGrants.push(newGrant);
-    }
-    this.grants.set(projectId, projectGrants);
+    await this.firestoreService.saveGrant(newGrant);
 
     const auditEntry: AuditLogEntry = {
       id: generateUuidV7(),
@@ -271,7 +268,7 @@ export class ProjectsService {
       timestamp: now,
       metadata: { role },
     };
-    this.auditLogs.push(auditEntry);
+    await this.firestoreService.appendAuditLog(auditEntry);
 
     return newGrant;
   }
@@ -280,8 +277,357 @@ export class ProjectsService {
     user: AuthenticatedUser,
     projectId: string,
   ): Promise<AuditLogEntry[]> {
-    // Must be allowed to view project (even if soft-deleted) to read audit logs
     await this.getProject(user, projectId, true);
-    return this.auditLogs.filter((entry) => entry.projectId === projectId);
+    return this.firestoreService.getAuditLogs(projectId);
+  }
+
+  // ==========================================
+  // Scripts Persistence & Tenant Guards
+  // ==========================================
+
+  async createScriptVersion(
+    user: AuthenticatedUser,
+    projectId: string,
+    data: {
+      sourceType: (typeof SourceType)["_type"];
+      checksumSha256: string;
+      pageCount: number;
+      sceneCount: number;
+    },
+  ): Promise<ScriptVersion> {
+    const project = await this.getProject(user, projectId);
+    await this.assertProjectAccess(user, project, ["OWNER", "PRODUCER"]);
+
+    const scriptVersionId = generateUuidV7();
+    const now = new Date().toISOString();
+    const existingScripts =
+      await this.firestoreService.listScriptVersions(projectId);
+
+    const scriptVersion: ScriptVersion = {
+      id: scriptVersionId,
+      projectId,
+      sourceType: data.sourceType,
+      checksumSha256: data.checksumSha256,
+      pageCount: data.pageCount,
+      versionNumber: existingScripts.length + 1,
+      sceneCount: data.sceneCount,
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.firestoreService.saveScriptVersion(scriptVersion);
+
+    // Audit log (content-free: only metadata counters, no script body)
+    await this.firestoreService.appendAuditLog({
+      id: generateUuidV7(),
+      organizationId: project.organizationId,
+      projectId,
+      actorId: user.uid,
+      action: "SCRIPT_VERSION_CREATED",
+      timestamp: now,
+      metadata: {
+        pageCount: data.pageCount,
+        sceneCount: data.sceneCount,
+        versionNumber: scriptVersion.versionNumber,
+      },
+    });
+
+    return scriptVersion;
+  }
+
+  async getScriptVersion(
+    user: AuthenticatedUser,
+    projectId: string,
+    scriptVersionId: string,
+  ): Promise<ScriptVersion> {
+    const project = await this.getProject(user, projectId);
+    await this.assertProjectAccess(user, project, [
+      "OWNER",
+      "PRODUCER",
+      "REVIEWER",
+    ]);
+
+    const script = await this.firestoreService.getScriptVersion(
+      projectId,
+      scriptVersionId,
+    );
+    if (!script) {
+      throw new ForbiddenException("FORBIDDEN");
+    }
+    return script;
+  }
+
+  // ==========================================
+  // Entities Persistence & Tenant Guards
+  // ==========================================
+
+  async createEntity(
+    user: AuthenticatedUser,
+    projectId: string,
+    scriptVersionId: string,
+    data: Omit<
+      CanonicalEntity,
+      "id" | "scriptVersionId" | "version" | "createdAt" | "updatedAt"
+    >,
+  ): Promise<CanonicalEntity> {
+    const project = await this.getProject(user, projectId);
+    await this.assertProjectAccess(user, project, ["OWNER", "PRODUCER"]);
+
+    const entityId = generateUuidV7();
+    const now = new Date().toISOString();
+
+    const entity: CanonicalEntity = {
+      ...data,
+      id: entityId,
+      scriptVersionId,
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.firestoreService.saveEntity(entity);
+    return entity;
+  }
+
+  async getEntity(
+    user: AuthenticatedUser,
+    projectId: string,
+    scriptVersionId: string,
+    entityId: string,
+  ): Promise<CanonicalEntity> {
+    const project = await this.getProject(user, projectId);
+    await this.assertProjectAccess(user, project, [
+      "OWNER",
+      "PRODUCER",
+      "REVIEWER",
+    ]);
+
+    const entities = await this.firestoreService.listEntities(scriptVersionId);
+    const entity = entities.find((e) => e.id === entityId);
+    if (!entity) {
+      throw new ForbiddenException("FORBIDDEN");
+    }
+    return entity;
+  }
+
+  async patchEntity(
+    user: AuthenticatedUser,
+    projectId: string,
+    scriptVersionId: string,
+    entityId: string,
+    patch: {
+      expectedVersion: number;
+      canonicalName?: string;
+      type?: CanonicalEntity["type"];
+      aliases?: string[];
+    },
+  ): Promise<CanonicalEntity> {
+    const project = await this.getProject(user, projectId);
+    await this.assertProjectAccess(user, project, ["OWNER", "PRODUCER"]);
+
+    const entity = await this.getEntity(
+      user,
+      projectId,
+      scriptVersionId,
+      entityId,
+    );
+    if (entity.version !== patch.expectedVersion) {
+      throw new PreconditionFailedException("VERSION_CONFLICT");
+    }
+
+    const now = new Date().toISOString();
+    const updated: CanonicalEntity = {
+      ...entity,
+      canonicalName: patch.canonicalName ?? entity.canonicalName,
+      type: patch.type ?? entity.type,
+      aliases: patch.aliases ?? entity.aliases,
+      version: entity.version + 1,
+      updatedAt: now,
+    };
+
+    await this.firestoreService.saveEntity(updated, patch.expectedVersion);
+    return updated;
+  }
+
+  /**
+   * Producer confirmation gate: Only PRODUCER or OWNER can confirm entities.
+   * Required before any clearance research may execute.
+   */
+  async confirmEntities(
+    user: AuthenticatedUser,
+    projectId: string,
+    scriptVersionId: string,
+    entityIds: string[],
+  ): Promise<{ confirmedCount: number }> {
+    const project = await this.getProject(user, projectId);
+    // Explicitly enforce PRODUCER or OWNER role
+    await this.assertProjectAccess(user, project, ["OWNER", "PRODUCER"]);
+
+    const entities = await this.firestoreService.listEntities(scriptVersionId);
+    let count = 0;
+
+    for (const id of entityIds) {
+      const entity = entities.find((e) => e.id === id);
+      if (entity && !entity.confirmed) {
+        const now = new Date().toISOString();
+        const updated: CanonicalEntity = {
+          ...entity,
+          confirmed: true,
+          version: entity.version + 1,
+          updatedAt: now,
+        };
+        await this.firestoreService.saveEntity(updated, entity.version);
+        count++;
+      }
+    }
+
+    // Content-free audit entry
+    await this.firestoreService.appendAuditLog({
+      id: generateUuidV7(),
+      organizationId: project.organizationId,
+      projectId,
+      actorId: user.uid,
+      action: "ENTITIES_CONFIRMED",
+      timestamp: new Date().toISOString(),
+      metadata: {
+        confirmedCount: count,
+      },
+    });
+
+    return { confirmedCount: count };
+  }
+
+  async listEntities(
+    user: AuthenticatedUser,
+    projectId: string,
+    scriptVersionId: string,
+  ): Promise<CanonicalEntity[]> {
+    const project = await this.getProject(user, projectId);
+    await this.assertProjectAccess(user, project, [
+      "OWNER",
+      "PRODUCER",
+      "REVIEWER",
+      "READER",
+    ]);
+
+    return this.firestoreService.listEntities(scriptVersionId);
+  }
+
+  async mergeEntities(
+    user: AuthenticatedUser,
+    projectId: string,
+    scriptVersionId: string,
+    dto: MergeEntitiesRequest,
+  ): Promise<CanonicalEntity> {
+    const project = await this.getProject(user, projectId);
+    await this.assertProjectAccess(user, project, ["OWNER", "PRODUCER"]);
+
+    const validated = MergeEntitiesRequest.parse(dto);
+    const entities = await this.firestoreService.listEntities(scriptVersionId);
+
+    const survivor = entities.find((e) => e.id === validated.survivorId);
+    if (!survivor) {
+      throw new ForbiddenException("SURVIVOR_NOT_FOUND");
+    }
+
+    const expectedSurvivorVersion = validated.expectedVersions[survivor.id];
+    if (
+      expectedSurvivorVersion !== undefined &&
+      survivor.version !== expectedSurvivorVersion
+    ) {
+      throw new PreconditionFailedException("VERSION_CONFLICT");
+    }
+
+    const mergedEntities: CanonicalEntity[] = [];
+    for (const mergedId of validated.mergedIds) {
+      if (mergedId === survivor.id) continue;
+      const mEntity = entities.find((e) => e.id === mergedId);
+      if (!mEntity) {
+        throw new ForbiddenException("MERGED_ENTITY_NOT_FOUND");
+      }
+      const expVer = validated.expectedVersions[mergedId];
+      if (expVer !== undefined && mEntity.version !== expVer) {
+        throw new PreconditionFailedException("VERSION_CONFLICT");
+      }
+      mergedEntities.push(mEntity);
+    }
+
+    // Accumulate aliases
+    const aliasSet = new Set<string>(survivor.aliases);
+    for (const m of mergedEntities) {
+      aliasSet.add(m.canonicalName);
+      for (const a of m.aliases) {
+        aliasSet.add(a);
+      }
+    }
+    // Remove self if present
+    aliasSet.delete(survivor.canonicalName);
+    const combinedAliases = Array.from(aliasSet).slice(0, 20);
+
+    // Accumulate mentions
+    const combinedMentions = [...survivor.mentions];
+    for (const m of mergedEntities) {
+      combinedMentions.push(...m.mentions);
+    }
+
+    const now = new Date().toISOString();
+    const updatedSurvivor: CanonicalEntity = {
+      ...survivor,
+      aliases: combinedAliases,
+      mentions: combinedMentions,
+      version: survivor.version + 1,
+      updatedAt: now,
+    };
+
+    // Save survivor with incremented version
+    await this.firestoreService.saveEntity(updatedSurvivor, survivor.version);
+
+    // Delete merged records
+    for (const m of mergedEntities) {
+      await this.firestoreService.deleteEntity(scriptVersionId, m.id);
+    }
+
+    // Content-free audit log
+    await this.firestoreService.appendAuditLog({
+      id: generateUuidV7(),
+      organizationId: project.organizationId,
+      projectId,
+      actorId: user.uid,
+      action: "ENTITIES_MERGED",
+      timestamp: now,
+      metadata: {
+        survivorId: survivor.id,
+        mergedCount: mergedEntities.length,
+      },
+    });
+
+    return updatedSurvivor;
+  }
+
+  // ==========================================
+  // Authorization Helper
+  // ==========================================
+
+  private async assertProjectAccess(
+    user: AuthenticatedUser,
+    project: Project,
+    allowedRoles: Array<(typeof Role)["_type"]>,
+  ): Promise<void> {
+    const org = await this.firestoreService.getOrganization(
+      project.organizationId,
+    );
+    const isOrgOwner = org?.ownerId === user.uid;
+
+    if (isOrgOwner) {
+      return; // Organization owner has full administrative clearance
+    }
+
+    const grants = await this.firestoreService.getGrants(project.id);
+    const grant = grants.find((g) => g.userId === user.uid);
+
+    if (!grant || !allowedRoles.includes(grant.role)) {
+      throw new ForbiddenException("FORBIDDEN");
+    }
   }
 }

@@ -19,6 +19,7 @@ export const CitationId = Uuid;
 export const FindingId = Uuid;
 export const ReviewId = Uuid;
 export const ReportId = Uuid;
+export const LedgerEntryId = Uuid;
 export const IdempotencyKey = z.string().min(16).max(128);
 
 /**

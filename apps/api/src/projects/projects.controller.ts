@@ -6,11 +6,18 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
 } from "@nestjs/common";
-import { CreateProjectRequest, Role } from "@permissa/contracts";
+import {
+  ConfirmEntitiesRequest,
+  CreateProjectRequest,
+  MergeEntitiesRequest,
+  PatchEntityRequest,
+  Role,
+} from "@permissa/contracts";
 import { AuthGuard } from "../auth/auth.guard.js";
 import { CurrentUser } from "../auth/current-user.decorator.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
@@ -91,6 +98,83 @@ export class ProjectsController {
       projectId,
       body.userId,
       body.role,
+    );
+  }
+
+  @Get(":projectId/scripts/:scriptVersionId/entities")
+  async listEntities(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("projectId") projectId: string,
+    @Param("scriptVersionId") scriptVersionId: string,
+  ) {
+    return this.projectsService.listEntities(user, projectId, scriptVersionId);
+  }
+
+  @Post(":projectId/scripts/:scriptVersionId/entities")
+  @HttpCode(HttpStatus.CREATED)
+  async createEntity(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("projectId") projectId: string,
+    @Param("scriptVersionId") scriptVersionId: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.projectsService.createEntity(
+      user,
+      projectId,
+      scriptVersionId,
+      body as any,
+    );
+  }
+
+  @Patch(":projectId/scripts/:scriptVersionId/entities/:entityId")
+  async patchEntity(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("projectId") projectId: string,
+    @Param("scriptVersionId") scriptVersionId: string,
+    @Param("entityId") entityId: string,
+    @Body() body: unknown,
+  ) {
+    const dto = PatchEntityRequest.parse(body);
+    return this.projectsService.patchEntity(
+      user,
+      projectId,
+      scriptVersionId,
+      entityId,
+      dto,
+    );
+  }
+
+  @Post(":projectId/scripts/:scriptVersionId/entities/merge")
+  @HttpCode(HttpStatus.OK)
+  async mergeEntities(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("projectId") projectId: string,
+    @Param("scriptVersionId") scriptVersionId: string,
+    @Body() body: unknown,
+  ) {
+    const dto = MergeEntitiesRequest.parse(body);
+    return this.projectsService.mergeEntities(
+      user,
+      projectId,
+      scriptVersionId,
+      dto,
+    );
+  }
+
+  @Post(":projectId/scripts/:scriptVersionId/entities/confirm")
+  @HttpCode(HttpStatus.OK)
+  async confirmEntities(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("projectId") projectId: string,
+    @Param("scriptVersionId") scriptVersionId: string,
+    @Body() body: unknown,
+  ) {
+    const dto = ConfirmEntitiesRequest.parse(body);
+    return this.projectsService.confirmEntities(
+      user,
+      projectId,
+      scriptVersionId,
+      dto.confirmedEntityIds,
     );
   }
 }

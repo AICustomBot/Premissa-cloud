@@ -9,6 +9,8 @@ export const EntityMention = z.object({
   contextExcerpt: z.string().max(600),
 });
 
+export type EntityMention = z.infer<typeof EntityMention>;
+
 export const CanonicalEntity = Versioned.extend({
   id: EntityId,
   scriptVersionId: ScriptVersionId,
@@ -18,6 +20,8 @@ export const CanonicalEntity = Versioned.extend({
   mentions: z.array(EntityMention).min(1),
   confirmed: z.boolean(),
 });
+
+export type CanonicalEntity = z.infer<typeof CanonicalEntity>;
 
 export const PatchEntityRequest = z.object({
   expectedVersion: z.number().int().nonnegative(),

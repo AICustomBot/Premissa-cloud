@@ -5,6 +5,7 @@ import {
   GOLDEN_SCRIPT_METADATA,
   GOLDEN_SCENES,
   type SceneItem,
+  type ClearanceItem,
 } from "../data/golden-data";
 import {
   FileText,
@@ -20,29 +21,84 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  UploadCloud,
+  CheckCircle2,
 } from "lucide-react";
+import { ScriptUploadModal } from "./ScriptUploadModal";
+import type { ParsedScriptResult } from "../lib/script-parser";
 
 interface ScreenplayViewerProps {
   onSelectEntity?: (entityId: string) => void;
+  onUpdateEntities?: (entities: ClearanceItem[]) => void;
 }
 
 export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
   onSelectEntity,
+  onUpdateEntities,
 }) => {
+  const [scriptMetadata, setScriptMetadata] = useState(GOLDEN_SCRIPT_METADATA);
+  const [scenes, setScenes] = useState<SceneItem[]>(GOLDEN_SCENES);
   const [activeSceneId, setActiveSceneId] = useState<string>("scene-1");
   const [searchQuery, setSearchQuery] = useState("");
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [uploadNotification, setUploadNotification] = useState<string | null>(
+    null,
+  );
 
   const activeScene =
-    GOLDEN_SCENES.find((s) => s.id === activeSceneId) ?? GOLDEN_SCENES[0]!;
+    scenes.find((s) => s.id === activeSceneId) ??
+    scenes[0] ??
+    GOLDEN_SCENES[0]!;
 
-  const filteredScenes = GOLDEN_SCENES.filter(
+  const filteredScenes = scenes.filter(
     (s) =>
       s.heading.toLowerCase().includes(searchQuery.toLowerCase()) ||
       s.summary.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
+  const handleScriptIngested = (result: ParsedScriptResult) => {
+    setScriptMetadata({
+      title: result.title,
+      genre: result.genre,
+      jurisdiction: result.jurisdiction,
+      version: result.version,
+      pageCount: result.pageCount,
+      sceneCount: result.sceneCount,
+      languages: ["en", "ar"],
+      uploadedAt: result.uploadedAt,
+      checksumSha256: result.checksumSha256,
+    });
+    setScenes(result.scenes);
+    if (result.scenes.length > 0) {
+      setActiveSceneId(result.scenes[0]!.id);
+    }
+    if (onUpdateEntities && result.entities.length > 0) {
+      onUpdateEntities(result.entities);
+    }
+    setUploadNotification(
+      `Ingested ${result.sceneCount} normalized scenes and ${result.entities.length} candidate entities.`,
+    );
+    setTimeout(() => setUploadNotification(null), 5000);
+  };
+
   return (
     <div className="space-y-6">
+      {/* Upload Notification Banner */}
+      {uploadNotification && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800 flex items-center justify-between shadow-xs animate-in fade-in">
+          <div className="flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="font-semibold">{uploadNotification}</span>
+          </div>
+          <button
+            onClick={() => setUploadNotification(null)}
+            className="text-emerald-700 hover:text-emerald-900"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Script Header Card */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-7 shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -52,21 +108,27 @@ export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
                 Script Ingestion &bull; Tranche 2
               </span>
               <span className="text-xs text-slate-500 font-mono">
-                {GOLDEN_SCRIPT_METADATA.version}
+                {scriptMetadata.version}
               </span>
             </div>
             <h1 className="text-2xl font-bold text-slate-900 mt-2 tracking-tight">
-              {GOLDEN_SCRIPT_METADATA.title}
+              {scriptMetadata.title}
             </h1>
             <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-              Genre: {GOLDEN_SCRIPT_METADATA.genre} &bull; Jurisdiction:{" "}
-              {GOLDEN_SCRIPT_METADATA.jurisdiction} &bull;{" "}
-              {GOLDEN_SCRIPT_METADATA.pageCount} Pages &bull;{" "}
-              {GOLDEN_SCRIPT_METADATA.sceneCount} Scenes
+              Genre: {scriptMetadata.genre} &bull; Jurisdiction:{" "}
+              {scriptMetadata.jurisdiction} &bull; {scriptMetadata.pageCount}{" "}
+              Pages &bull; {scriptMetadata.sceneCount} Scenes
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={() => setIsUploadModalOpen(true)}
+              className="inline-flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+            >
+              <UploadCloud className="w-4 h-4" />
+              <span>Upload Screenplay</span>
+            </button>
             <div className="flex items-center space-x-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg text-xs">
               <Languages className="w-4 h-4 text-indigo-600" />
               <span className="text-slate-700 font-medium">
@@ -76,14 +138,12 @@ export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
             <div className="flex items-center space-x-2 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg text-xs">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
               <span className="text-emerald-800 font-medium">
-                Injection Filter Active
+                Quarantine Active
               </span>
             </div>
             <div className="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg text-xs font-mono text-slate-500">
               <Hash className="w-3.5 h-3.5" />
-              <span>
-                {GOLDEN_SCRIPT_METADATA.checksumSha256.slice(0, 12)}...
-              </span>
+              <span>{scriptMetadata.checksumSha256.slice(0, 12)}...</span>
             </div>
           </div>
         </div>
@@ -171,11 +231,11 @@ export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
               {/* Prev / Next Scene Switcher */}
               <div className="flex items-center space-x-2 font-sans shrink-0">
                 {(() => {
-                  const currentIndex = GOLDEN_SCENES.findIndex(
+                  const currentIndex = scenes.findIndex(
                     (s) => s.id === activeSceneId,
                   );
-                  const prevScene = GOLDEN_SCENES[currentIndex - 1];
-                  const nextScene = GOLDEN_SCENES[currentIndex + 1];
+                  const prevScene = scenes[currentIndex - 1];
+                  const nextScene = scenes[currentIndex + 1];
                   return (
                     <>
                       <button
@@ -189,7 +249,7 @@ export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
                         <ChevronLeft className="w-4 h-4" />
                       </button>
                       <span className="text-xs text-slate-600 font-mono font-semibold">
-                        {currentIndex + 1} / {GOLDEN_SCENES.length}
+                        {currentIndex + 1} / {scenes.length}
                       </span>
                       <button
                         onClick={() =>
@@ -240,23 +300,23 @@ export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
                 }
 
                 // Action / Description / Neutralized Injection Line
-                const isInjectionLine = line.text.includes(
-                  "INJECTION STRING DETECTED",
-                );
+                const isInjectionLine =
+                  line.text.includes("INJECTION STRING DETECTED") ||
+                  line.text.includes("INJECTION_NEUTRALIZED");
                 return (
                   <div
                     key={idx}
                     className={`text-xs sm:text-sm text-slate-600 leading-relaxed ${
                       isInjectionLine
-                        ? "p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 font-sans"
-                        : "italic"
+                        ? "p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 font-mono text-[11px]"
+                        : ""
                     }`}
                   >
                     {isInjectionLine && (
-                      <div className="flex items-center space-x-1.5 font-bold mb-1 text-amber-800">
-                        <AlertTriangle className="w-4 h-4 text-amber-600" />
-                        <span>Deterministic Security Filter Applied</span>
-                      </div>
+                      <span className="font-bold text-amber-900 block font-sans mb-1">
+                        [Security Filter: Adversarial Prompt Injection
+                        Neutralized]
+                      </span>
                     )}
                     {line.text}
                   </div>
@@ -264,9 +324,9 @@ export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
               })}
             </div>
 
-            {/* Detected Entities Footer */}
-            <div className="mt-8 pt-5 border-t border-slate-100 flex flex-wrap items-center gap-2 font-sans">
-              <span className="text-xs text-slate-600 font-medium mr-1">
+            {/* Scene Bottom Metadata & Entity Tags */}
+            <div className="border-t border-slate-100 pt-4 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-sans text-slate-400 mr-2">
                 Entities detected in scene (click to inspect evidence):
               </span>
               {activeScene.detectedEntityIds.map((entId) => (
@@ -284,6 +344,13 @@ export const ScreenplayViewer: React.FC<ScreenplayViewerProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Script Upload Modal */}
+      <ScriptUploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onScriptIngested={handleScriptIngested}
+      />
     </div>
   );
 };
