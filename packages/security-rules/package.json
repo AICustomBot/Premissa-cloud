@@ -1,0 +1,18 @@
+{
+  "name": "@permissa/security-rules",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Executable proof that firestore.rules blocks every threat payload in security_spec.md.",
+  "scripts": {
+    "lint": "prettier --check test",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^3.0.4",
+    "firebase": "^10.14.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
