@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   AuditLogEntry,
   CanonicalEntity,
+  ClearanceRun,
   IsoDateTime,
   Scene,
   ScriptVersion,
@@ -25,6 +26,7 @@ export class WorkerFirestoreClient {
   private readonly scenes = new Map<string, Record<string, unknown>>();
   private readonly scripts = new Map<string, Record<string, unknown>>();
   private readonly leases = new Map<string, Record<string, unknown>>();
+  private readonly runs = new Map<string, Record<string, unknown>>();
   private readonly auditLogs: Record<string, unknown>[] = [];
 
   async getEntity(entityId: string): Promise<CanonicalEntity | null> {
@@ -88,6 +90,20 @@ export class WorkerFirestoreClient {
   async saveScriptVersion(script: ScriptVersion): Promise<void> {
     const validated = ScriptVersion.parse(script);
     this.scripts.set(
+      validated.id,
+      validated as unknown as Record<string, unknown>,
+    );
+  }
+
+  async getRun(runId: string): Promise<ClearanceRun | null> {
+    const raw = this.runs.get(runId);
+    if (!raw) return null;
+    return ClearanceRun.parse(raw);
+  }
+
+  async saveRun(run: ClearanceRun): Promise<void> {
+    const validated = ClearanceRun.parse(run);
+    this.runs.set(
       validated.id,
       validated as unknown as Record<string, unknown>,
     );

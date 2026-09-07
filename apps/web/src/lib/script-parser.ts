@@ -12,6 +12,7 @@
 
 import type { SceneItem, ClearanceItem } from "../data/golden-data";
 import { generateUuidV7 } from "@permissa/contracts";
+import { extractCandidatesAndResolveAliases } from "./entity-registry";
 
 export type IngestionStep =
   | "IDLE"
@@ -149,7 +150,10 @@ export async function parseScreenplayFile(
   );
   await new Promise((r) => setTimeout(r, 100));
 
-  const isFdx = file.name.endsWith(".fdx") || rawText.includes("<FinalDraft");
+  const isPdf =
+    file.name.toLowerCase().endsWith(".pdf") || rawText.startsWith("%PDF-");
+  const isFdx =
+    !isPdf && (file.name.endsWith(".fdx") || rawText.includes("<FinalDraft"));
   let pageCount = 1;
   interface ClientRawScene {
     ordinal: number;
@@ -164,7 +168,97 @@ export async function parseScreenplayFile(
 
   const rawSceneList: ClientRawScene[] = [];
 
-  if (isFdx) {
+  if (isPdf) {
+    // PDF validation & text extraction
+    if (!rawText.startsWith("%PDF-")) {
+      throw new Error(
+        "FILE_SIGNATURE_INVALID: Missing standard %PDF magic header.",
+      );
+    }
+    if (/\/Encrypt\b/.test(rawText)) {
+      throw new Error(
+        "PDF_LOCKED: Encrypted or password-protected PDF cannot be ingested.",
+      );
+    }
+
+    const pageMatches = rawText.match(/\/Type\s*\/Page\b(?!s)/g);
+    pageCount = pageMatches ? pageMatches.length : 1;
+    const countMatch = rawText.match(/\/Type\s*\/Pages[\s\S]*?\/Count\s+(\d+)/);
+    if (countMatch && countMatch[1]) {
+      pageCount = Math.max(pageCount, parseInt(countMatch[1], 10));
+    }
+
+    // Extract text streams
+    const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+    let streamMatch: RegExpExecArray | null;
+    const extractedPdfLines: string[] = [];
+
+    while ((streamMatch = streamRegex.exec(rawText)) !== null) {
+      const streamText = streamMatch[1] ?? "";
+      const btRegex = /BT([\s\S]*?)ET/g;
+      let btMatch: RegExpExecArray | null;
+      while ((btMatch = btRegex.exec(streamText)) !== null) {
+        const btContent = btMatch[1] ?? "";
+        const stringRegex = /\(((?:[^()\\]|\\.)*)\)\s*(?:'|Tj|TJ)/g;
+        let sMatch: RegExpExecArray | null;
+        while ((sMatch = stringRegex.exec(btContent)) !== null) {
+          const rawT = sMatch[1] ?? "";
+          const unescaped = rawT
+            .replace(/\\([()\\])/g, "$1")
+            .replace(/\\n/g, "\n")
+            .replace(/\\r/g, "\r")
+            .replace(/\\t/g, "\t");
+          if (unescaped.trim()) {
+            extractedPdfLines.push(unescaped.trim());
+          }
+        }
+      }
+    }
+
+    let currentScene: ClientRawScene | null = null;
+    let currentSpeaker: string | undefined;
+
+    for (const line of extractedPdfLines) {
+      const trimmed = line.trim();
+      if (/^(?:INT\.|EXT\.|INT\.\/EXT\.|I\/E|\.\d+[A-Z]?\.)/i.test(trimmed)) {
+        const numMatch = trimmed.match(/(?:^|\.)(\d+)([A-Z]?)\.?\s*(.*)$/i);
+        const ordinal =
+          numMatch && numMatch[1]
+            ? parseInt(numMatch[1], 10)
+            : rawSceneList.length + 1;
+        const subOrdinal =
+          numMatch && numMatch[2] ? numMatch[2].toUpperCase() : undefined;
+
+        const newScene: ClientRawScene = {
+          ordinal,
+          subOrdinal,
+          heading: trimmed.replace(/^\.\d+[A-Z]?\.\s*/, ""),
+          lines: [],
+        };
+        currentScene = newScene;
+        rawSceneList.push(newScene);
+        currentSpeaker = undefined;
+      } else if (currentScene) {
+        if (
+          /^[A-Z0-9\s.()-]{2,30}$/.test(trimmed) &&
+          trimmed.length > 2 &&
+          !trimmed.endsWith(".")
+        ) {
+          currentSpeaker = trimmed.replace(/\s*\([^)]*\)/g, "").trim();
+        } else if (currentSpeaker && trimmed.length > 0) {
+          const isArabic = /[\u0600-\u06FF]/.test(trimmed);
+          currentScene.lines.push({
+            speaker: currentSpeaker,
+            text: trimmed,
+            isArabic,
+          });
+          currentSpeaker = undefined;
+        } else if (trimmed.length > 0) {
+          currentScene.lines.push({ text: trimmed });
+        }
+      }
+    }
+  } else if (isFdx) {
     // FDX Paragraph extraction
     const pRegex =
       /<Paragraph(?:\s+Type="([^"]*)")?(?:\s+PageBreak="([^"]*)")?[^>]*>([\s\S]*?)<\/Paragraph>/gi;
@@ -345,245 +439,24 @@ export async function parseScreenplayFile(
   );
   await new Promise((r) => setTimeout(r, 100));
 
-  // Dynamic Candidate Extraction Engine (Batch 3)
+  // Dynamic Candidate Extraction & Alias Resolution (Batch 3)
   // Extracts speaking characters, brands/products, and production titles
-  // Resolves aliases into canonical records and issues server-side UUIDv7 identifiers.
-
-  // 1. Gather all speaking character candidates from dialogue lines
-  const speakerCandidates = new Map<string, { raw: string; count: number }>();
-  for (const sc of normalizedScenes) {
-    for (const l of sc.lines) {
-      if (l.speaker) {
-        // Strip parentheticals like (V.O.), (O.S.), (CONT'D)
-        const cleaned = l.speaker.replace(/\s*\([^)]*\)/g, "").trim();
-        if (cleaned.length >= 2 && !/^(SCENE|CUT TO|FADE IN|FADE OUT)/i.test(cleaned)) {
-          // Normalize to Title Case
-          const titleCased = cleaned
-            .toLowerCase()
-            .split(/\s+/)
-            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-            .join(" ");
-
-          const existing = speakerCandidates.get(titleCased) ?? {
-            raw: titleCased,
-            count: 0,
-          };
-          existing.count++;
-          speakerCandidates.set(titleCased, existing);
-        }
-      }
-    }
-  }
-
-  // 2. Map and deduplicate variations to canonical character records
-  // e.g. "Layla" and "Layla Mansour" -> Canonical "Layla Mansour", alias ["Layla"]
-  // "Julian", "Voss", "Julian Voss" -> Canonical "Julian Voss", aliases ["Julian", "Voss"]
-  const characterRoster: Array<{
-    canonicalName: string;
-    aliases: string[];
-    pattern: RegExp;
-  }> = [];
-
-  const sortedSpeakers = Array.from(speakerCandidates.keys()).sort(
-    (a, b) => b.length - a.length,
+  // Resolves character references like "Julian" to "Julian Voss"
+  const extraction = extractCandidatesAndResolveAliases(
+    normalizedScenes,
+    file.name,
   );
-  const claimedSpeakers = new Set<string>();
+  const extractedEntities: ClearanceItem[] = extraction.entities;
 
-  for (const speaker of sortedSpeakers) {
-    if (claimedSpeakers.has(speaker)) continue;
-
-    // Check if shorter names are sub-parts / aliases of this full name
-    const aliases: string[] = [];
-    const parts = speaker.split(/\s+/);
-
-    if (parts.length > 1) {
-      for (const part of parts) {
-        if (part.length >= 3) {
-          aliases.push(part);
-          claimedSpeakers.add(part);
-        }
-      }
-    }
-
-    // Build regex matching full name or any recognized alias
-    const escapedNames = [speaker, ...aliases].map((n) =>
-      n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-    );
-    const pattern = new RegExp(`\\b(${escapedNames.join("|")})\\b`, "gi");
-
-    characterRoster.push({
-      canonicalName: speaker,
-      aliases,
-      pattern,
-    });
-    claimedSpeakers.add(speaker);
-  }
-
-  // 3. Known Catalog & Dynamic Brand/Product & Title definitions
-  const candidateDefs = [
-    // Golden characters if present
-    {
-      goldenId: "ent-noor",
-      name: "Noor Haddad",
-      type: "PERSON_CHARACTER" as const,
-      aliases: ["Noor", "Haddad"],
-      pattern: /\b(Noor\s+Haddad|Noor)\b/gi,
-    },
-    {
-      goldenId: "ent-julian",
-      name: "Julian Voss",
-      type: "PERSON_CHARACTER" as const,
-      aliases: ["Julian", "Voss"],
-      pattern: /\b(Julian\s+Voss|Julian)\b/gi,
-    },
-    {
-      goldenId: "ent-layla",
-      name: "Layla Mansour",
-      type: "PERSON_CHARACTER" as const,
-      aliases: ["Layla", "Mansour"],
-      pattern: /\b(Layla\s+Mansour|Layla)\b/gi,
-    },
-    {
-      goldenId: "ent-owen",
-      name: "Owen Reed",
-      type: "PERSON_CHARACTER" as const,
-      aliases: ["Owen", "Reed"],
-      pattern: /\b(Owen\s+Reed|Owen)\b/gi,
-    },
-    // Brands & Commercial Products
-    {
-      goldenId: "ent-apple",
-      name: "Apple",
-      type: "BRAND_BUSINESS_PRODUCT" as const,
-      aliases: [],
-      pattern: /\bApple\b(?!\s+Vision\s+Pro)/g,
-    },
-    {
-      goldenId: "ent-vision-pro",
-      name: "Vision Pro",
-      type: "BRAND_BUSINESS_PRODUCT" as const,
-      aliases: ["Apple Vision Pro"],
-      pattern: /\b(Apple\s+)?Vision\s+Pro\b/gi,
-    },
-    {
-      goldenId: "ent-fcp",
-      name: "Final Cut Pro",
-      type: "BRAND_BUSINESS_PRODUCT" as const,
-      aliases: ["FCP"],
-      pattern: /\b(Final\s+Cut\s+Pro|FCP)\b/gi,
-    },
-    {
-      goldenId: "ent-appel-one",
-      name: "Appel One",
-      type: "BRAND_BUSINESS_PRODUCT" as const,
-      aliases: [],
-      pattern: /\bAppel\s+One\b/gi,
-    },
-    {
-      goldenId: "ent-faceframe",
-      name: "FaceFrame",
-      type: "BRAND_BUSINESS_PRODUCT" as const,
-      aliases: [],
-      pattern: /\bFaceFrame\b/gi,
-    },
-    // Production Titles
-    {
-      goldenId: "ent-final-witness",
-      name: "The Final Witness",
-      type: "PRODUCTION_TITLE" as const,
-      aliases: ["Final Witness"],
-      pattern: /\b(The\s+)?Final\s+Witness\b/gi,
-    },
-    {
-      goldenId: "ent-witness-protocol",
-      name: "Witness Protocol",
-      type: "PRODUCTION_TITLE" as const,
-      aliases: [],
-      pattern: /\bWitness\s+Protocol\b/gi,
-    },
-    {
-      goldenId: "ent-borrowed-face",
-      name: "Borrowed Face",
-      type: "PRODUCTION_TITLE" as const,
-      aliases: [],
-      pattern: /\bBorrowed\s+Face\b/gi,
-    },
-  ];
-
-  // Merge dynamically discovered character candidates that aren't in goldenDefs
-  for (const char of characterRoster) {
-    const isAlreadyCovered = candidateDefs.some(
-      (def) =>
-        def.name.toLowerCase() === char.canonicalName.toLowerCase() ||
-        def.aliases.some((a) => a.toLowerCase() === char.canonicalName.toLowerCase()),
-    );
-    if (!isAlreadyCovered) {
-      candidateDefs.push({
-        goldenId: undefined as any,
-        name: char.canonicalName,
-        type: "PERSON_CHARACTER" as const,
-        aliases: char.aliases,
-        pattern: char.pattern,
-      });
-    }
-  }
-
-  const extractedEntities: ClearanceItem[] = [];
-
-  for (const def of candidateDefs) {
-    const matchedSceneIds: string[] = [];
-    let mentionCount = 0;
-
+  // Correlate detected entities back to scenes
+  for (const entity of extractedEntities) {
     for (const sc of normalizedScenes) {
-      const fullSceneText = sc.lines
-        .map((l) => `${l.speaker ?? ""} ${l.text}`)
-        .join(" ");
-      def.pattern.lastIndex = 0;
-      const matches = fullSceneText.match(def.pattern);
-      if (matches && matches.length > 0) {
-        matchedSceneIds.push(sc.id);
-        mentionCount += matches.length;
+      if (
+        entity.sceneIds.includes(sc.id) &&
+        !sc.detectedEntityIds.includes(entity.id)
+      ) {
+        sc.detectedEntityIds.push(entity.id);
       }
-    }
-
-    if (matchedSceneIds.length > 0) {
-      // Server-side UUIDv7 identification for canonical entity records
-      const entityId = def.goldenId || generateUuidV7();
-
-      // Record detected entity ID in scenes
-      for (const sc of normalizedScenes) {
-        if (matchedSceneIds.includes(sc.id) && !sc.detectedEntityIds.includes(entityId)) {
-          sc.detectedEntityIds.push(entityId);
-        }
-      }
-
-      extractedEntities.push({
-        id: entityId,
-        canonicalName: def.name,
-        type: def.type,
-        aliases: def.aliases,
-        mentionsCount: mentionCount,
-        sceneIds: matchedSceneIds,
-        initialProposedStatus: "INSUFFICIENT_EVIDENCE",
-        rationale: `Extracted candidate from ${file.name} across ${matchedSceneIds.length} scenes. Awaiting Producer confirmation before clearance research may execute.`,
-        citations: [],
-        confidenceInput: {
-          authority: "NONE",
-          independence: "SINGLE_SOURCE",
-          match: "EXACT_CORROBORATED",
-          freshnessValid: true,
-          context: "COMPLETE",
-          unresolvedConflict: false,
-          providerFailed: false,
-          budgetLimited: false,
-          citationUnreachable: false,
-          hasAdmissibleCitation: false,
-          evidenceExpired: false,
-        },
-        // Strictly enforce the constitutional gate: no live research until Producer confirms
-        confirmedByProducer: false,
-        version: 1,
-      });
     }
   }
 

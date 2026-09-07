@@ -1,0 +1,144 @@
+{
+  "$ref": "#/definitions/DifferentialClearanceRunResult",
+  "definitions": {
+    "DifferentialClearanceRunResult": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "projectId": {
+          "$ref": "#/definitions/DifferentialClearanceRunResult/properties/runId"
+        },
+        "baseScriptVersionId": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DifferentialClearanceRunResult/properties/runId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "targetScriptVersionId": {
+          "$ref": "#/definitions/DifferentialClearanceRunResult/properties/runId"
+        },
+        "deltaSummary": {
+          "type": "object",
+          "properties": {
+            "totalBaseEntities": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "totalTargetEntities": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "addedEntitiesCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "modifiedEntitiesCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "deletedEntitiesCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "untouchedEntitiesCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "carriedForwardFindingsCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "researchRequiredCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "estimatedCostSavingsUsd": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "totalBaseEntities",
+            "totalTargetEntities",
+            "addedEntitiesCount",
+            "modifiedEntitiesCount",
+            "deletedEntitiesCount",
+            "untouchedEntitiesCount",
+            "carriedForwardFindingsCount",
+            "researchRequiredCount",
+            "estimatedCostSavingsUsd"
+          ],
+          "additionalProperties": false
+        },
+        "carriedForwardFindingIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DifferentialClearanceRunResult/properties/runId"
+          }
+        },
+        "dispatchedEntityIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DifferentialClearanceRunResult/properties/runId"
+          }
+        },
+        "totalEntitiesInScope": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalCostUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "costSavedUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "CREATED",
+            "QUEUED",
+            "PREFLIGHT",
+            "RUNNING",
+            "PAUSED_FAILURE",
+            "PAUSED_BUDGET",
+            "CANCELLED_PARTIAL",
+            "DRAFT_READY",
+            "PRODUCER_REVIEW",
+            "CHANGES_REQUESTED",
+            "PROFESSIONAL_REVIEW",
+            "APPROVED"
+          ]
+        }
+      },
+      "required": [
+        "runId",
+        "projectId",
+        "baseScriptVersionId",
+        "targetScriptVersionId",
+        "deltaSummary",
+        "carriedForwardFindingIds",
+        "dispatchedEntityIds",
+        "totalEntitiesInScope",
+        "totalCostUsd",
+        "costSavedUsd",
+        "startedAt",
+        "status"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

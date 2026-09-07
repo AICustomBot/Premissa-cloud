@@ -26,9 +26,7 @@ describe("Document Parsing Pipeline & Quarantine Ingestion (Batch 2)", () => {
   const fixturePath = findFixture(
     "tests/fixtures/golden/the-final-witness.fdx",
   );
-  const oraclePath = findFixture(
-    "tests/fixtures/golden/expected-oracle.json",
-  );
+  const oraclePath = findFixture("tests/fixtures/golden/expected-oracle.json");
 
   const rawFixtureFdx = fs.readFileSync(fixturePath, "utf-8");
   const oracle = JSON.parse(fs.readFileSync(oraclePath, "utf-8"));
@@ -161,5 +159,104 @@ describe("Document Parsing Pipeline & Quarantine Ingestion (Batch 2)", () => {
         firestore,
       ),
     ).rejects.toThrow(/PAYLOAD_TOO_LARGE/);
+  });
+
+  it("extracts 6 normalized scenes and 12 canonical entities from the golden Fountain fixture", async () => {
+    const fountainPath = findFixture(
+      "tests/fixtures/golden/the-final-witness.fountain",
+    );
+    const rawFountain = fs.readFileSync(fountainPath, "utf-8");
+    const firestore = new WorkerFirestoreClient();
+    const projectId = generateUuidV7();
+
+    const result = await runParserJob(
+      {
+        projectId,
+        sourceType: "FDX", // Will parse via text branch when plain fountain text
+        fileName: "the-final-witness.fountain",
+        content: rawFountain,
+      },
+      firestore,
+    );
+
+    expect(result.scenes).toHaveLength(6);
+    expect(result.scriptVersion.sceneCount).toBe(6);
+    expect(result.scriptVersion.pageCount).toBe(10);
+    expect(result.entities).toHaveLength(12);
+
+    const names = result.entities.map((e) => e.canonicalName);
+    for (const oracleEntity of oracle.entities) {
+      expect(names).toContain(oracleEntity.name);
+    }
+  });
+
+  it("extracts 6 normalized scenes and 12 canonical entities from the golden PDF fixture", async () => {
+    const pdfPath = findFixture("tests/fixtures/golden/the-final-witness.pdf");
+    const rawPdf = fs.readFileSync(pdfPath);
+    const firestore = new WorkerFirestoreClient();
+    const projectId = generateUuidV7();
+
+    const result = await runParserJob(
+      {
+        projectId,
+        sourceType: "PDF",
+        fileName: "the-final-witness.pdf",
+        content: rawPdf,
+      },
+      firestore,
+    );
+
+    expect(result.scenes).toHaveLength(6);
+    expect(result.scriptVersion.sceneCount).toBe(6);
+    expect(result.scriptVersion.pageCount).toBe(10);
+    expect(result.scriptVersion.sourceType).toBe("PDF");
+    expect(result.entities).toHaveLength(12);
+
+    // Verify SHA-256 checksum is 64 hex characters
+    expect(result.scriptVersion.checksumSha256).toMatch(/^[a-f0-9]{64}$/);
+
+    // Verify ScriptVersion is immutable with UUIDv7
+    expect(result.scriptVersion.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+
+    const names = result.entities.map((e) => e.canonicalName);
+    for (const oracleEntity of oracle.entities) {
+      expect(names).toContain(oracleEntity.name);
+    }
+  });
+
+  it("rejects non-PDF payloads marked as PDF with FILE_SIGNATURE_INVALID", async () => {
+    const firestore = new WorkerFirestoreClient();
+    const fakePdfContent = Buffer.from("NOT_A_PDF_FILE_HEADER");
+
+    await expect(
+      runParserJob(
+        {
+          projectId: generateUuidV7(),
+          sourceType: "PDF",
+          content: fakePdfContent,
+        },
+        firestore,
+      ),
+    ).rejects.toThrow(/FILE_SIGNATURE_INVALID/);
+  });
+
+  it("rejects encrypted PDFs with PDF_LOCKED", async () => {
+    const firestore = new WorkerFirestoreClient();
+    const lockedPdfContent = Buffer.from(
+      "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Encrypt 2 0 R >>\nendobj",
+    );
+
+    await expect(
+      runParserJob(
+        {
+          projectId: generateUuidV7(),
+          sourceType: "PDF",
+          content: lockedPdfContent,
+        },
+        firestore,
+      ),
+    ).rejects.toThrow(/PDF_LOCKED/);
   });
 });

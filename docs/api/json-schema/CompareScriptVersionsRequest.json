@@ -1,0 +1,23 @@
+{
+  "$ref": "#/definitions/CompareScriptVersionsRequest",
+  "definitions": {
+    "CompareScriptVersionsRequest": {
+      "type": "object",
+      "properties": {
+        "baseScriptVersionId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "targetScriptVersionId": {
+          "$ref": "#/definitions/CompareScriptVersionsRequest/properties/baseScriptVersionId"
+        }
+      },
+      "required": [
+        "baseScriptVersionId",
+        "targetScriptVersionId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

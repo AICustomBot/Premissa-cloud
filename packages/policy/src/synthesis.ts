@@ -20,6 +20,10 @@ import {
   type EntityRiskInput,
   type LegalRiskAnalysis,
 } from "./legal-pillars";
+import {
+  evaluateEvidenceMatrix,
+  type EvidenceMatrixEvaluation,
+} from "./evidence-matrix";
 
 export interface SynthesisRequest {
   runId: string;
@@ -37,6 +41,7 @@ export interface SynthesisResult {
   authorityPattern: AuthorityPattern;
   independencePattern: IndependencePattern;
   confidenceInput: ConfidenceInput;
+  matrixResult: EvidenceMatrixEvaluation;
   gateDecision: GateDecision;
   finding: Finding;
 }
@@ -112,8 +117,10 @@ export function synthesizeFinding(request: SynthesisRequest): SynthesisResult {
   const riskInput: EntityRiskInput = {
     entityType: entity.type,
     canonicalName: entity.canonicalName,
-    isRegisteredTrademark: tier1Citations.length > 0 && entity.type === "BRAND_BUSINESS_PRODUCT",
-    isRegisteredCopyrightWork: tier1Citations.length > 0 && entity.type === "PRODUCTION_TITLE",
+    isRegisteredTrademark:
+      tier1Citations.length > 0 && entity.type === "BRAND_BUSINESS_PRODUCT",
+    isRegisteredCopyrightWork:
+      tier1Citations.length > 0 && entity.type === "PRODUCTION_TITLE",
     ...request.riskOverrides,
   };
 
@@ -137,7 +144,17 @@ export function synthesizeFinding(request: SynthesisRequest): SynthesisResult {
     evidenceExpired: false,
   };
 
-  // 4. Propose Status Based on Legal Pillar Findings
+  // 4. Formulate Evidence Synthesis Matrix
+  const matrixResult = evaluateEvidenceMatrix({
+    entity,
+    citations,
+    riskAnalysis,
+    unresolvedConflict: Boolean(request.unresolvedConflict),
+    providerFailed: Boolean(request.providerFailed),
+    budgetLimited: Boolean(request.budgetLimited),
+  });
+
+  // 5. Propose Status Based on Legal Pillar Findings
   let proposedStatus: ProposedStatus = "INSUFFICIENT_EVIDENCE";
 
   if (riskAnalysis.severeContext && riskAnalysis.strongConflict) {
@@ -150,7 +167,7 @@ export function synthesizeFinding(request: SynthesisRequest): SynthesisResult {
     proposedStatus = "RESEARCH_CLEARED";
   }
 
-  // 5. Submit to Deterministic Evidence Gate
+  // 6. Submit to Deterministic Evidence Gate
   const gateInput: GateInput = {
     proposedStatus,
     confidence: confidenceInput,
@@ -158,19 +175,28 @@ export function synthesizeFinding(request: SynthesisRequest): SynthesisResult {
     rewritePathSupported: riskAnalysis.rewritePathSupported,
     strongConflict: riskAnalysis.strongConflict,
     severeContext: riskAnalysis.severeContext,
+    allClaimsVerified: matrixResult.promotableToResearchCleared,
   };
 
   const gateDecision = evaluateEvidenceGate(gateInput);
 
-  // 6. Map Reason Codes safely to ReasonCode enum
-  const safeReasonCodes = gateDecision.reasonCodes
+  // 7. Map Reason Codes safely to ReasonCode enum
+  const allRawReasonCodes = [...gateDecision.reasonCodes];
+  if (
+    matrixResult.primaryReasonCode &&
+    !allRawReasonCodes.includes(matrixResult.primaryReasonCode)
+  ) {
+    allRawReasonCodes.push(matrixResult.primaryReasonCode);
+  }
+
+  const safeReasonCodes = allRawReasonCodes
     .map((code) => {
       const parsed = ReasonCode.safeParse(code);
       return parsed.success ? parsed.data : null;
     })
     .filter((code): code is typeof ReasonCode._type => code !== null);
 
-  // 7. Emit Optimistically Concurrency-Controlled Finding Record
+  // 8. Emit Optimistically Concurrency-Controlled Finding Record
   const now = new Date().toISOString();
   const findingId = request.findingId ?? generateUuidV7Fallback();
 
@@ -180,7 +206,8 @@ export function synthesizeFinding(request: SynthesisRequest): SynthesisResult {
     entityId: entity.id,
     proposedStatus,
     admittedStatus: gateDecision.admittedStatus,
-    professionalConfirmationRequired: gateDecision.professionalConfirmationRequired,
+    professionalConfirmationRequired:
+      gateDecision.professionalConfirmationRequired,
     confidence: {
       formulaVersion: gateDecision.confidence.formulaVersion,
       rawScore: gateDecision.confidence.rawScore,
@@ -204,6 +231,7 @@ export function synthesizeFinding(request: SynthesisRequest): SynthesisResult {
     authorityPattern,
     independencePattern,
     confidenceInput,
+    matrixResult,
     gateDecision,
     finding,
   };
@@ -218,7 +246,7 @@ function generateUuidV7Fallback(): string {
   const randA = Math.floor(Math.random() * 0xfff)
     .toString(16)
     .padStart(3, "0");
-  const randB = Math.floor(Math.random() * 0x3fff | 0x8000)
+  const randB = Math.floor((Math.random() * 0x3fff) | 0x8000)
     .toString(16)
     .padStart(4, "0");
   const randC = Math.floor(Math.random() * 0xffffffffffff)

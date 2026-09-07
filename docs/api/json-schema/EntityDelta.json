@@ -1,0 +1,101 @@
+{
+  "$ref": "#/definitions/EntityDelta",
+  "definitions": {
+    "EntityDelta": {
+      "type": "object",
+      "properties": {
+        "entityId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "canonicalName": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "PERSON_CHARACTER",
+            "BRAND_BUSINESS_PRODUCT",
+            "PRODUCTION_TITLE"
+          ]
+        },
+        "changeType": {
+          "type": "string",
+          "enum": [
+            "ADDED",
+            "MODIFIED",
+            "DELETED",
+            "UNTOUCHED"
+          ]
+        },
+        "baseEntityId": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/EntityDelta/properties/entityId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "targetEntityId": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/EntityDelta/properties/entityId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "previousFindingId": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/EntityDelta/properties/entityId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "previousStatus": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "RESEARCH_CLEARED",
+                "NEEDS_LICENCE",
+                "NEEDS_REWRITE",
+                "BLOCKED",
+                "INSUFFICIENT_EVIDENCE"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requiresResearch": {
+          "type": "boolean"
+        },
+        "carryForwardAllowed": {
+          "type": "boolean"
+        },
+        "diffDetails": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      },
+      "required": [
+        "entityId",
+        "canonicalName",
+        "type",
+        "changeType",
+        "requiresResearch",
+        "carryForwardAllowed"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

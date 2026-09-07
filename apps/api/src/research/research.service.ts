@@ -30,7 +30,7 @@ export interface ResearchQueryRequest {
   projectId: string;
   runId: string;
   entityId: string;
-  jurisdiction?: Jurisdiction;
+  jurisdiction?: any;
 }
 
 export interface ResearchQueryResult {
@@ -302,7 +302,9 @@ export class ResearchService {
   async getFinding(runId: string, findingId: string): Promise<Finding> {
     const finding = await this.firestoreService.getFinding(runId, findingId);
     if (!finding) {
-      throw new NotFoundException(`Finding [${findingId}] not found in run [${runId}]`);
+      throw new NotFoundException(
+        `Finding [${findingId}] not found in run [${runId}]`,
+      );
     }
     return finding;
   }

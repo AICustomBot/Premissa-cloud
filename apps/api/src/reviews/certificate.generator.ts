@@ -41,12 +41,19 @@ export function computeReportDigest(payload: DigestPayload): string {
  * Generates an archival, high-fidelity printable HTML clearance certificate.
  */
 export function generateCertificateHtml(report: ClearanceReport): string {
-  const statusColorMap: Record<string, { bg: string; text: string; label: string }> = {
+  const statusColorMap: Record<
+    string,
+    { bg: string; text: string; label: string }
+  > = {
     RESEARCH_CLEARED: { bg: "#ecfdf5", text: "#065f46", label: "CLEARED" },
     NEEDS_LICENCE: { bg: "#eff6ff", text: "#1e40af", label: "NEEDS LICENCE" },
     NEEDS_REWRITE: { bg: "#fffbeb", text: "#92400e", label: "NEEDS REWRITE" },
     BLOCKED: { bg: "#fef2f2", text: "#991b1b", label: "BLOCKED" },
-    INSUFFICIENT_EVIDENCE: { bg: "#f8fafc", text: "#475569", label: "INSUFFICIENT EVIDENCE" },
+    INSUFFICIENT_EVIDENCE: {
+      bg: "#f8fafc",
+      text: "#475569",
+      label: "INSUFFICIENT EVIDENCE",
+    },
   };
 
   const riskLevelMap: Record<string, { bg: string; text: string }> = {

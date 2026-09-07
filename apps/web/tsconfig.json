@@ -1,17 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": [
-    "src",
-    "next-env.d.ts",
-    ".next/types/**/*.ts"
-  ],
+  "include": ["src", "next-env.d.ts", ".next/types/**/*.ts"],
   "compilerOptions": {
     "jsx": "preserve",
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "moduleResolution": "Bundler",
     "noEmit": true,
     "composite": false,
@@ -27,7 +19,5 @@
     "resolveJsonModule": true,
     "strictNullChecks": true
   },
-  "exclude": [
-    "node_modules"
-  ]
+  "exclude": ["node_modules"]
 }

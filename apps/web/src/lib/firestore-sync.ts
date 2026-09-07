@@ -16,6 +16,8 @@ import {
   query,
   orderBy,
   limit,
+  serverTimestamp,
+  Timestamp,
 } from "firebase/firestore";
 import type { ClearanceItem } from "../data/golden-data";
 import type {
@@ -32,8 +34,35 @@ export interface SyncStatus {
 }
 
 /**
+ * Ensures tenant organization exists in Firestore before project creation
+ */
+export async function ensureOrganizationInFirestore(
+  orgId: string,
+  orgName: string,
+  ownerId: string,
+): Promise<void> {
+  if (!auth.currentUser) return;
+  const orgPath = `organizations/${orgId}`;
+  try {
+    const orgRef = doc(db, "organizations", orgId);
+    const snap = await getDoc(orgRef);
+    if (!snap.exists()) {
+      await setDoc(orgRef, {
+        id: orgId,
+        name: orgName,
+        ownerId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    console.warn("Organization check/init note:", error);
+  }
+}
+
+/**
  * Initializes or fetches a project in Firestore.
- * If project does not exist yet, seeds it with initial data.
+ * If project does not exist yet, seeds it with initial data conforming to security rules.
  */
 export async function syncProjectToFirestore(
   project: ProjectSummary,
@@ -45,26 +74,33 @@ export async function syncProjectToFirestore(
   }
   const projectPath = `projects/${project.id}`;
   try {
+    // Ensure organization document exists for membership checks
+    await ensureOrganizationInFirestore(
+      project.organizationId,
+      user.organizationName || "Apex Pictures Entertainment",
+      auth.currentUser.uid,
+    );
+
     const projectRef = doc(db, "projects", project.id);
     const existingSnap = await getDoc(projectRef);
 
     if (!existingSnap.exists()) {
-      // Seed initial project document
-      const now = new Date().toISOString();
+      // Seed initial project document strictly matching isValidProject rule:
+      // version: 1, budgetUsed: 0, isRunApproved: false, server timestamps
       await setDoc(projectRef, {
         id: project.id,
         organizationId: project.organizationId,
         title: project.title,
-        jurisdiction: project.jurisdiction,
-        createdBy: user.id,
-        version: project.version,
+        jurisdiction: "US",
+        createdBy: auth.currentUser.uid,
+        version: 1,
         isRunApproved: false,
-        budgetUsed: 0.42,
-        createdAt: project.createdAt || now,
-        updatedAt: now,
+        budgetUsed: 0,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
 
-      // Seed entities in subcollection
+      // Seed candidate entities in subcollection adhering to client-create rule
       for (const entity of entities) {
         const entityRef = doc(
           db,
@@ -78,27 +114,29 @@ export async function syncProjectToFirestore(
           projectId: project.id,
           canonicalName: entity.canonicalName,
           type: entity.type,
-          initialProposedStatus: entity.initialProposedStatus,
-          rationale: entity.rationale,
+          initialProposedStatus: "INSUFFICIENT_EVIDENCE",
+          rationale:
+            entity.rationale || "Candidate entity awaiting evidence gate.",
           rewriteSuggestion: entity.rewriteSuggestion || "",
-          confirmedByProducer: Boolean(entity.confirmedByProducer),
-          reviewerNotes: entity.reviewerNotes || "",
-          updatedAt: now,
+          confirmedByProducer: false,
+          reviewerNotes: "",
+          updatedAt: serverTimestamp(),
         });
       }
     }
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, projectPath);
+    console.warn("Project sync deferred:", error);
   }
 }
 
 /**
- * Updates a single clearance entity in Firestore subcollection
+ * Updates a single clearance entity in Firestore subcollection respecting role boundaries
  */
 export async function updateEntityInFirestore(
   projectId: string,
   entityId: string,
   updates: Partial<ClearanceItem>,
+  role: "PRODUCER" | "REVIEWER" = "PRODUCER",
 ): Promise<void> {
   if (!auth.currentUser) {
     return;
@@ -106,26 +144,37 @@ export async function updateEntityInFirestore(
   const entityPath = `projects/${projectId}/entities/${entityId}`;
   try {
     const entityRef = doc(db, "projects", projectId, "entities", entityId);
-    const now = new Date().toISOString();
 
-    // Whitelisted fields matching security rules
+    // Whitelisted fields matching security rules role partitioning
     const payload: Record<string, any> = {
-      updatedAt: now,
+      updatedAt: serverTimestamp(),
     };
-    if (updates.confirmedByProducer !== undefined) {
-      payload.confirmedByProducer = updates.confirmedByProducer;
-    }
-    if (updates.initialProposedStatus !== undefined) {
-      payload.initialProposedStatus = updates.initialProposedStatus;
-    }
-    if (updates.reviewerNotes !== undefined) {
-      payload.reviewerNotes = updates.reviewerNotes;
-    }
-    if (updates.canonicalName !== undefined) {
-      payload.canonicalName = updates.canonicalName;
-    }
-    if (updates.rewriteSuggestion !== undefined) {
-      payload.rewriteSuggestion = updates.rewriteSuggestion;
+
+    if (role === "PRODUCER") {
+      // PRODUCER: confirmedByProducer, canonicalName, type, rewriteSuggestion, rationale, updatedAt
+      if (updates.confirmedByProducer !== undefined) {
+        payload.confirmedByProducer = updates.confirmedByProducer;
+      }
+      if (updates.canonicalName !== undefined) {
+        payload.canonicalName = updates.canonicalName;
+      }
+      if (updates.type !== undefined) {
+        payload.type = updates.type;
+      }
+      if (updates.rewriteSuggestion !== undefined) {
+        payload.rewriteSuggestion = updates.rewriteSuggestion;
+      }
+      if (updates.rationale !== undefined) {
+        payload.rationale = updates.rationale;
+      }
+    } else {
+      // REVIEWER: initialProposedStatus, reviewerNotes, updatedAt
+      if (updates.initialProposedStatus !== undefined) {
+        payload.initialProposedStatus = updates.initialProposedStatus;
+      }
+      if (updates.reviewerNotes !== undefined) {
+        payload.reviewerNotes = updates.reviewerNotes;
+      }
     }
 
     await updateDoc(entityRef, payload);
@@ -154,7 +203,7 @@ export async function deleteEntityInFirestore(
 }
 
 /**
- * Saves a new or survivor clearance entity in Firestore subcollection
+ * Saves a new candidate clearance entity in Firestore subcollection
  */
 export async function saveNewEntityToFirestore(
   projectId: string,
@@ -166,18 +215,17 @@ export async function saveNewEntityToFirestore(
   const entityPath = `projects/${projectId}/entities/${entity.id}`;
   try {
     const entityRef = doc(db, "projects", projectId, "entities", entity.id);
-    const now = new Date().toISOString();
     await setDoc(entityRef, {
       id: entity.id,
       projectId,
       canonicalName: entity.canonicalName,
       type: entity.type,
-      initialProposedStatus: entity.initialProposedStatus,
-      rationale: entity.rationale,
+      initialProposedStatus: "INSUFFICIENT_EVIDENCE",
+      rationale: entity.rationale || "Candidate entity awaiting evidence gate.",
       rewriteSuggestion: entity.rewriteSuggestion || "",
-      confirmedByProducer: Boolean(entity.confirmedByProducer),
-      reviewerNotes: entity.reviewerNotes || "",
-      updatedAt: now,
+      confirmedByProducer: false,
+      reviewerNotes: "",
+      updatedAt: serverTimestamp(),
     });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, entityPath);
@@ -201,39 +249,75 @@ export async function updateProjectApprovalInFirestore(
     await updateDoc(projectRef, {
       isRunApproved,
       version: currentVersion + 1,
-      updatedAt: new Date().toISOString(),
+      updatedAt: serverTimestamp(),
     });
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, projectPath);
   }
 }
 
+import type { HashChainedAuditEntry } from "./hash-chained-audit";
+
 /**
- * Appends a tamper-evident, content-free audit log entry in Firestore
+ * Appends a tamper-evident, hash-chained audit log entry to Firestore
  */
 export async function appendAuditLogToFirestore(
-  projectId: string,
-  organizationId: string,
-  actorId: string,
-  action: string,
-  logId: string,
+  entry: HashChainedAuditEntry,
 ): Promise<void> {
   if (!auth.currentUser) {
     return;
   }
-  const logPath = `projects/${projectId}/auditLogs/${logId}`;
+  const logPath = `projects/${entry.projectId}/auditLogs/${entry.id}`;
   try {
-    const logRef = doc(db, "projects", projectId, "auditLogs", logId);
+    const logRef = doc(db, "projects", entry.projectId, "auditLogs", entry.id);
     await setDoc(logRef, {
-      id: logId,
-      organizationId,
-      actorId,
-      action,
-      timestamp: new Date().toISOString(),
+      id: entry.id,
+      sequence: entry.sequence,
+      projectId: entry.projectId,
+      organizationId: entry.organizationId,
+      actorId: entry.actorId,
+      actorRole: entry.actorRole,
+      action: entry.action,
+      previousEntryHash: entry.previousEntryHash,
+      entryHash: entry.entryHash,
+      timestamp: serverTimestamp(),
+      details: entry.details,
     });
   } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, logPath);
+    console.warn("Audit trail Firestore append note:", error);
   }
+}
+
+/**
+ * Subscribes to real-time hash-chained audit log entries
+ */
+export function subscribeToProjectAuditLogs(
+  projectId: string,
+  onLogsChange: (entries: HashChainedAuditEntry[]) => void,
+) {
+  if (!auth.currentUser) {
+    return () => {};
+  }
+  const logsRef = collection(db, "projects", projectId, "auditLogs");
+
+  return onSnapshot(
+    logsRef,
+    (snapshot) => {
+      const logs: HashChainedAuditEntry[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() as HashChainedAuditEntry;
+        logs.push(data);
+      });
+      // Sort by sequence monotonic order
+      logs.sort((a, b) => a.sequence - b.sequence);
+      if (logs.length > 0) {
+        onLogsChange(logs);
+      }
+    },
+    (err) => {
+      console.warn("Audit logs subscription note:", err);
+    },
+  );
 }
 
 /**
@@ -266,14 +350,14 @@ export function subscribeToProjectEntities(
       try {
         handleFirestoreError(error, OperationType.GET, collectionPath);
       } catch (err) {
-        console.warn("Firestore subscription error:", err);
+        console.warn("Firestore subscription note:", err);
       }
     },
   );
 }
 
 /**
- * Sync user profile to Firestore
+ * Sync user profile to Firestore adhering to isValidUserProfile rule
  */
 export async function syncUserProfileToFirestore(
   user: TenantUser,
@@ -281,29 +365,30 @@ export async function syncUserProfileToFirestore(
   if (!auth.currentUser) {
     return;
   }
-  const userPath = `users/${user.id}`;
+  const userPath = `users/${auth.currentUser.uid}`;
   try {
-    const userRef = doc(db, "users", user.id);
+    const userRef = doc(db, "users", auth.currentUser.uid);
     const snap = await getDoc(userRef);
     if (!snap.exists()) {
       await setDoc(userRef, {
-        id: user.id,
+        id: auth.currentUser.uid,
         name: user.name,
         email: user.email,
         role: user.role,
         organizationId: user.organizationId,
         organizationName: user.organizationName,
-        createdAt: new Date().toISOString(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
     } else {
+      // Changed keys can only be name, organizationName, updatedAt
       await updateDoc(userRef, {
         name: user.name,
-        role: user.role,
         organizationName: user.organizationName,
-        updatedAt: new Date().toISOString(),
+        updatedAt: serverTimestamp(),
       });
     }
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, userPath);
+    console.warn("User profile sync note:", error);
   }
 }

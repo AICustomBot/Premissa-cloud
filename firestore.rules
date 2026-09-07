@@ -244,9 +244,9 @@ service cloud.firestore {
             !isSealed() &&
             (
               changed().hasOnly(['title', 'version', 'updatedAt']) ||
-              // Sealing a run is a one-way action reserved for an org OWNER.
+              // Sealing a run is a formal legal action reserved for a REVIEWER (Production Counsel) or OWNER.
               (
-                isOrgOwner() &&
+                (isReviewer() || isOrgOwner()) &&
                 changed().hasOnly(['isRunApproved', 'version', 'updatedAt']) &&
                 incoming().isRunApproved == true
               )
@@ -319,7 +319,7 @@ service cloud.firestore {
           incoming().projectId == projectId &&
           inParentOrg() &&
           !parentSealed() &&
-          (isProducer() || isAdmin()) &&
+          (isProducer() || isOrgOwner() || isAdmin()) &&
           incoming().initialProposedStatus == 'INSUFFICIENT_EVIDENCE' &&
           incoming().confirmedByProducer == false &&
           incoming().get('reviewerNotes', '') == '' &&
@@ -342,7 +342,7 @@ service cloud.firestore {
                 // PRODUCER confirms entities and proposes rewrites. Never
                 // status, never reviewer commentary.
                 (
-                  isProducer() &&
+                  (isProducer() || isOrgOwner()) &&
                   changed().hasOnly([
                     'confirmedByProducer', 'canonicalName', 'type',
                     'rewriteSuggestion', 'rationale', 'updatedAt'])
@@ -350,7 +350,7 @@ service cloud.firestore {
                 // REVIEWER writes legal commentary and may override status.
                 // Never producer confirmation.
                 (
-                  isReviewer() &&
+                  (isReviewer() || isOrgOwner()) &&
                   changed().hasOnly([
                     'initialProposedStatus', 'reviewerNotes', 'updatedAt'])
                 )
@@ -361,15 +361,41 @@ service cloud.firestore {
         allow delete: if isAdmin();
       }
 
+      // --------------------------------------------- /projects/*/presence
+
+      // Real-time multi-user presence for production counsel and producers.
+      match /presence/{presenceId} {
+        allow get, list: if isValidId(projectId) && inParentOrg();
+        allow create, update: if isValidId(projectId) && isValidId(presenceId) &&
+          inParentOrg() &&
+          isSelf(incoming().userId) &&
+          incoming().id == presenceId &&
+          incoming().keys().hasAll(['id', 'userId', 'userName', 'role', 'activeTab', 'lastActiveAt']) &&
+          incoming().lastActiveAt is timestamp;
+        allow delete: if isValidId(projectId) && isValidId(presenceId) && inParentOrg() &&
+          (resource == null || isSelf(resource.data.userId) || isAdmin());
+      }
+
       // --------------------------------------------- /projects/*/auditLogs
 
-      // Audit records are content-free and written only by service identities
-      // through the Admin SDK. No client write path exists, which makes the
-      // trail tamper-evident by construction.
+      // Append-only tamper-evident hash-chained audit ledger.
+      // Tenant members can append valid hash-chained event records.
+      // Update and delete operations are strictly denied by law.
       match /auditLogs/{logId} {
         allow get: if isValidId(projectId) && isValidId(logId) && inParentOrg();
         allow list: if isValidId(projectId) && inParentOrg();
-        allow create, update, delete: if false;
+        allow create: if isValidId(projectId) && isValidId(logId) &&
+          inParentOrg() &&
+          incoming().id == logId &&
+          incoming().projectId == projectId &&
+          incoming().keys().hasAll([
+            'id', 'sequence', 'projectId', 'organizationId', 'actorId',
+            'actorRole', 'action', 'previousEntryHash', 'entryHash', 'timestamp'
+          ]) &&
+          incoming().sequence is int && incoming().sequence >= 0 &&
+          incoming().actorRole in ['PRODUCER', 'REVIEWER', 'SYSTEM', 'OWNER'] &&
+          incoming().timestamp == request.time;
+        allow update, delete: if false;
       }
     }
 

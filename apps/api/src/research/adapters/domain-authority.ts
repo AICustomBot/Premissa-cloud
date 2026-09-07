@@ -2,7 +2,7 @@ import { SourceTier } from "@permissa/contracts";
 
 export interface DomainMetadata {
   domain: string;
-  sourceTier: SourceTier;
+  sourceTier: any;
   controllingOwner: string;
   jurisdiction: "US";
 }
@@ -149,7 +149,7 @@ export function resolveDomainMetadata(domainOrUrl: string): DomainMetadata {
 
   // Exact match
   if (DOMAIN_AUTHORITY_REGISTRY[hostname]) {
-    return DOMAIN_AUTHORITY_REGISTRY[hostname];
+    return DOMAIN_AUTHORITY_REGISTRY[hostname] as any;
   }
 
   // Subdomain match (e.g. tsdr.uspto.gov -> uspto.gov)

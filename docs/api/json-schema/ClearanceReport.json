@@ -1,0 +1,208 @@
+{
+  "$ref": "#/definitions/ClearanceReport",
+  "definitions": {
+    "ClearanceReport": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "projectId": {
+          "$ref": "#/definitions/ClearanceReport/properties/id"
+        },
+        "runId": {
+          "$ref": "#/definitions/ClearanceReport/properties/id"
+        },
+        "versionNumber": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "title": {
+          "type": "string"
+        },
+        "jurisdiction": {
+          "type": "string"
+        },
+        "generatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "approvedAt": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ClearanceReport/properties/generatedAt"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approvedBy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scriptChecksumSha256": {
+          "type": "string",
+          "default": ""
+        },
+        "summary": {
+          "type": "object",
+          "properties": {
+            "totalEntities": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "clearedCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "licenceRequiredCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "rewriteRequiredCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "blockedCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "insufficientEvidenceCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "overallRiskLevel": {
+              "type": "string",
+              "enum": [
+                "CLEAR",
+                "LOW",
+                "ELEVATED",
+                "CRITICAL"
+              ]
+            }
+          },
+          "required": [
+            "totalEntities",
+            "clearedCount",
+            "licenceRequiredCount",
+            "rewriteRequiredCount",
+            "blockedCount",
+            "insufficientEvidenceCount",
+            "overallRiskLevel"
+          ],
+          "additionalProperties": false
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "findingId": {
+                "$ref": "#/definitions/ClearanceReport/properties/id"
+              },
+              "entityId": {
+                "type": "string"
+              },
+              "entityName": {
+                "type": "string",
+                "default": "Unknown Entity"
+              },
+              "entityType": {
+                "type": "string",
+                "default": "UNKNOWN"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "RESEARCH_CLEARED",
+                  "NEEDS_LICENCE",
+                  "NEEDS_REWRITE",
+                  "BLOCKED",
+                  "INSUFFICIENT_EVIDENCE"
+                ],
+                "default": "INSUFFICIENT_EVIDENCE"
+              },
+              "confidenceScore": {
+                "type": "number",
+                "default": 0
+              },
+              "confidenceBand": {
+                "type": "string",
+                "default": "LOW"
+              },
+              "rationale": {
+                "type": "string",
+                "default": ""
+              },
+              "rewriteSuggestion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "citationsCount": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              }
+            },
+            "required": [
+              "findingId",
+              "entityId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "verification": {
+          "type": "object",
+          "properties": {
+            "contentDigestSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "algorithm": {
+              "type": "string",
+              "const": "SHA-256"
+            },
+            "archivalWatermark": {
+              "type": "string"
+            },
+            "certificateUrl": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "contentDigestSha256",
+            "algorithm",
+            "archivalWatermark"
+          ],
+          "additionalProperties": false
+        },
+        "pdfAvailable": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [
+        "id",
+        "projectId",
+        "runId",
+        "versionNumber",
+        "title",
+        "jurisdiction",
+        "generatedAt",
+        "approvedAt",
+        "approvedBy",
+        "summary",
+        "findings",
+        "verification"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

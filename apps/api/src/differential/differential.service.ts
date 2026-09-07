@@ -24,6 +24,7 @@ import {
   ScriptDraftHistoryResponse,
   ScriptVersion,
 } from "@permissa/contracts";
+import { compareScriptRevisions } from "@permissa/policy";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { ProjectsService } from "../projects/projects.service.js";
 import { ResearchService } from "../research/research.service.js";
@@ -78,10 +79,7 @@ export class DifferentialService {
       );
     }
 
-    // 1. Scene Diffing
-    const sceneDiffs = this.computeSceneDiffs(baseScript, targetScript);
-
-    // 2. Load entities for both versions
+    // 1. Load entities for both versions
     const baseEntities = await this.firestoreService.listEntities(
       baseScript.id,
     );
@@ -89,7 +87,7 @@ export class DifferentialService {
       targetScript.id,
     );
 
-    // 3. Find latest run and findings for base version to check prior clearance
+    // 2. Find latest run and findings for base version to check prior clearance
     const projectRuns = await this.firestoreService.listRuns(projectId);
     const baseRuns = projectRuns.filter(
       (r) => r.scriptVersionId === baseScript.id,
@@ -104,134 +102,21 @@ export class DifferentialService {
       ? await this.firestoreService.getFindings(latestBaseRun.id)
       : [];
 
-    const baseFindingByEntityId = new Map<string, Finding>(
-      baseFindings.map((f) => [f.entityId, f]),
-    );
-
-    // 4. Compute Entity Deltas
-    const entityDeltas: EntityDelta[] = [];
-    const matchedBaseEntityIds = new Set<string>();
-
-    let addedCount = 0;
-    let modifiedCount = 0;
-    let untouchedCount = 0;
-    let carriedForwardCount = 0;
-    let researchRequiredCount = 0;
-
-    for (const targetEnt of targetEntities) {
-      // Find matching base entity by canonicalName or aliases (case-insensitive)
-      const matchingBase = baseEntities.find(
-        (be) =>
-          be.canonicalName.trim().toLowerCase() ===
-            targetEnt.canonicalName.trim().toLowerCase() ||
-          be.aliases.some(
-            (a) =>
-              a.trim().toLowerCase() ===
-              targetEnt.canonicalName.trim().toLowerCase(),
-          ) ||
-          targetEnt.aliases.some(
-            (ta) =>
-              ta.trim().toLowerCase() === be.canonicalName.trim().toLowerCase(),
-          ),
-      );
-
-      if (!matchingBase) {
-        // ADDED entity
-        addedCount++;
-        researchRequiredCount++;
-        entityDeltas.push({
-          entityId: targetEnt.id,
-          canonicalName: targetEnt.canonicalName,
-          type: targetEnt.type,
-          changeType: "ADDED",
-          baseEntityId: null,
-          targetEntityId: targetEnt.id,
-          previousFindingId: null,
-          previousStatus: null,
-          requiresResearch: true,
-          carryForwardAllowed: false,
-          diffDetails: "New entity introduced in latest draft",
-        });
-      } else {
-        matchedBaseEntityIds.add(matchingBase.id);
-
-        // Check if entity mentions, scenes, or attributes changed
-        const isModified = this.isEntityModified(matchingBase, targetEnt);
-        const priorFinding = baseFindingByEntityId.get(matchingBase.id);
-
-        if (isModified) {
-          modifiedCount++;
-          researchRequiredCount++;
-          entityDeltas.push({
-            entityId: targetEnt.id,
-            canonicalName: targetEnt.canonicalName,
-            type: targetEnt.type,
-            changeType: "MODIFIED",
-            baseEntityId: matchingBase.id,
-            targetEntityId: targetEnt.id,
-            previousFindingId: priorFinding?.id ?? null,
-            previousStatus: priorFinding?.status ?? null,
-            requiresResearch: true,
-            carryForwardAllowed: false,
-            diffDetails:
-              "Entity context, scene occurrences, or lines modified across revisions",
-          });
-        } else {
-          untouchedCount++;
-          // UNTOUCHED entity: check if eligible for clearance carry-forward
-          const canCarryForward =
-            priorFinding !== undefined &&
-            priorFinding.status !== "INSUFFICIENT_EVIDENCE" &&
-            (priorFinding.confidenceScore ?? priorFinding.confidence?.finalScore ?? 0) >= 85;
-
-          if (canCarryForward) {
-            carriedForwardCount++;
-          } else {
-            researchRequiredCount++;
-          }
-
-          entityDeltas.push({
-            entityId: targetEnt.id,
-            canonicalName: targetEnt.canonicalName,
-            type: targetEnt.type,
-            changeType: "UNTOUCHED",
-            baseEntityId: matchingBase.id,
-            targetEntityId: targetEnt.id,
-            previousFindingId: priorFinding?.id ?? null,
-            previousStatus: priorFinding?.status ?? null,
-            requiresResearch: !canCarryForward,
-            carryForwardAllowed: canCarryForward,
-            diffDetails: canCarryForward
-              ? "Unmodified entity with valid prior clearance finding carried forward"
-              : "Unmodified entity requires fresh research due to incomplete prior evidence",
-          });
-        }
-      }
-    }
-
-    // Check for DELETED entities (in base but not in target)
-    let deletedCount = 0;
-    for (const baseEnt of baseEntities) {
-      if (!matchedBaseEntityIds.has(baseEnt.id)) {
-        deletedCount++;
-        entityDeltas.push({
-          entityId: baseEnt.id,
-          canonicalName: baseEnt.canonicalName,
-          type: baseEnt.type,
-          changeType: "DELETED",
-          baseEntityId: baseEnt.id,
-          targetEntityId: null,
-          previousFindingId: baseFindingByEntityId.get(baseEnt.id)?.id ?? null,
-          previousStatus: baseFindingByEntityId.get(baseEnt.id)?.status ?? null,
-          requiresResearch: false,
-          carryForwardAllowed: false,
-          diffDetails: "Entity omitted from latest draft",
-        });
-      }
-    }
-
-    const estimatedCostSavingsUsd = Number(
-      (carriedForwardCount * 0.75).toFixed(2),
+    // 3. Execute Deterministic Revision Comparison & Line Diffing
+    const compResult = compareScriptRevisions(
+      {
+        id: baseScript.id,
+        versionNumber: baseScript.versionNumber,
+        rawText: baseScript.rawText,
+        entities: baseEntities,
+        priorFindings: baseFindings,
+      },
+      {
+        id: targetScript.id,
+        versionNumber: targetScript.versionNumber,
+        rawText: targetScript.rawText,
+        entities: targetEntities,
+      },
     );
 
     const delta: ScriptDelta = {
@@ -241,20 +126,32 @@ export class DifferentialService {
       targetScriptVersionId: targetScript.id,
       baseChecksumSha256: baseScript.checksumSha256,
       targetChecksumSha256: targetScript.checksumSha256,
-      sceneDiffs,
-      entityDeltas,
-      summary: {
-        totalBaseEntities: baseEntities.length,
-        totalTargetEntities: targetEntities.length,
-        addedEntitiesCount: addedCount,
-        modifiedEntitiesCount: modifiedCount,
-        deletedEntitiesCount: deletedCount,
-        untouchedEntitiesCount: untouchedCount,
-        carriedForwardFindingsCount: carriedForwardCount,
-        researchRequiredCount,
-        estimatedCostSavingsUsd,
-      },
-      computedAt: new Date().toISOString(),
+      sceneDiffs: compResult.sceneDiffs.map((sd) => ({
+        sceneNumber: sd.sceneNumber,
+        heading: sd.heading,
+        changeType: sd.changeType,
+        baseSceneId: sd.baseSceneId ?? null,
+        targetSceneId: sd.targetSceneId ?? null,
+        addedLinesCount: sd.addedLinesCount,
+        removedLinesCount: sd.removedLinesCount,
+        modifiedLinesCount: sd.modifiedLinesCount,
+        diffDetails: sd.excerpt,
+      })),
+      entityDeltas: compResult.entityDeltas.map((ed) => ({
+        entityId: ed.entityId,
+        canonicalName: ed.canonicalName,
+        type: ed.type as any,
+        changeType: ed.changeType,
+        baseEntityId: ed.baseEntityId ?? null,
+        targetEntityId: ed.targetEntityId ?? null,
+        previousFindingId: ed.previousFindingId ?? null,
+        previousStatus: (ed.previousStatus as any) ?? null,
+        requiresResearch: ed.requiresResearch,
+        carryForwardAllowed: ed.carryForwardAllowed,
+        diffDetails: ed.diffDetails,
+      })),
+      summary: compResult.summary,
+      computedAt: compResult.computedAt,
     };
 
     // Content-free audit entry
@@ -268,11 +165,11 @@ export class DifferentialService {
       metadata: {
         baseVersionNumber: baseScript.versionNumber,
         targetVersionNumber: targetScript.versionNumber,
-        addedEntities: addedCount,
-        modifiedEntities: modifiedCount,
-        deletedEntities: deletedCount,
-        carriedForward: carriedForwardCount,
-        researchRequired: researchRequiredCount,
+        addedEntities: compResult.summary.addedEntitiesCount,
+        modifiedEntities: compResult.summary.modifiedEntitiesCount,
+        deletedEntities: compResult.summary.deletedEntitiesCount,
+        carriedForward: compResult.summary.carriedForwardFindingsCount,
+        researchRequired: compResult.summary.researchRequiredCount,
       },
     });
 
@@ -423,7 +320,7 @@ export class DifferentialService {
         const newFindingId = generateUuidV7();
 
         // Carry forward matching citations into new run
-        const relatedCitations = (priorFinding.citationIds || [])
+        const relatedCitations = []
           .map((cid) => priorCitationMap.get(cid))
           .filter(Boolean) as any[];
 
@@ -446,11 +343,13 @@ export class DifferentialService {
         carriedForwardFindingIds.push(newFindingId);
 
         // Checkpoint update
-        const completed = new Set(newRun.checkpoint.completedEntityIds);
+        const completed = new Set(newRun.checkpoint!.completedEntityIds);
         completed.add(targetEnt.id);
-        newRun.checkpoint.completedEntityIds = Array.from(completed);
-        newRun.checkpoint.pendingEntityIds =
-          newRun.checkpoint.pendingEntityIds.filter((id) => id !== targetEnt.id);
+        newRun.checkpoint!.completedEntityIds = Array.from(completed);
+        newRun.checkpoint!.pendingEntityIds =
+          newRun.checkpoint!.pendingEntityIds.filter(
+            (id) => id !== targetEnt.id,
+          );
       } else {
         // Dispatched live research for new or modified entity
         dispatchedEntityIds.push(targetEnt.id);
@@ -578,8 +477,7 @@ export class DifferentialService {
         runsCount: scriptRuns.length,
         latestRunState: latestRun?.state ?? null,
         clearanceReportId: report?.id ?? null,
-        certificateSealSha256:
-          report?.verification.contentDigestSha256 ?? null,
+        certificateSealSha256: report?.verification.contentDigestSha256 ?? null,
       });
     }
 
@@ -590,163 +488,16 @@ export class DifferentialService {
   }
 
   // ==========================================
-  // Helper & Scene / Entity Diffing Logic
+  // Helper & Entity Diffing Logic
   // ==========================================
-
-  private computeSceneDiffs(
-    baseScript: ScriptVersion,
-    targetScript: ScriptVersion,
-  ): SceneDiff[] {
-    const diffs: SceneDiff[] = [];
-
-    // If raw screenplay text exists, parse sluglines
-    if (baseScript.rawText && targetScript.rawText) {
-      const baseScenes = this.extractSceneHeadings(baseScript.rawText);
-      const targetScenes = this.extractSceneHeadings(targetScript.rawText);
-
-      const targetHeadingsSet = new Set(targetScenes.map((s) => s.heading));
-      const baseHeadingsSet = new Set(baseScenes.map((s) => s.heading));
-
-      for (const ts of targetScenes) {
-        if (!baseHeadingsSet.has(ts.heading)) {
-          diffs.push({
-            sceneNumber: ts.sceneNumber,
-            heading: ts.heading,
-            changeType: "ADDED",
-            baseSceneId: null,
-            targetSceneId: null,
-            addedLinesCount: ts.lineCount,
-            removedLinesCount: 0,
-          });
-        } else {
-          const bs = baseScenes.find((s) => s.heading === ts.heading);
-          if (bs && bs.lineCount !== ts.lineCount) {
-            diffs.push({
-              sceneNumber: ts.sceneNumber,
-              heading: ts.heading,
-              changeType: "MODIFIED",
-              baseSceneId: null,
-              targetSceneId: null,
-              addedLinesCount: Math.max(0, ts.lineCount - bs.lineCount),
-              removedLinesCount: Math.max(0, bs.lineCount - ts.lineCount),
-            });
-          } else {
-            diffs.push({
-              sceneNumber: ts.sceneNumber,
-              heading: ts.heading,
-              changeType: "UNTOUCHED",
-              baseSceneId: null,
-              targetSceneId: null,
-              addedLinesCount: 0,
-              removedLinesCount: 0,
-            });
-          }
-        }
-      }
-
-      for (const bs of baseScenes) {
-        if (!targetHeadingsSet.has(bs.heading)) {
-          diffs.push({
-            sceneNumber: bs.sceneNumber,
-            heading: bs.heading,
-            changeType: "DELETED",
-            baseSceneId: null,
-            targetSceneId: null,
-            addedLinesCount: 0,
-            removedLinesCount: bs.lineCount,
-          });
-        }
-      }
-    } else {
-      // Fallback structural scene diff based on scene counts
-      const maxScenes = Math.max(baseScript.sceneCount, targetScript.sceneCount);
-      for (let i = 1; i <= maxScenes; i++) {
-        if (i <= targetScript.sceneCount && i <= baseScript.sceneCount) {
-          diffs.push({
-            sceneNumber: `${i}`,
-            heading: `SCENE ${i}`,
-            changeType: "UNTOUCHED",
-            baseSceneId: null,
-            targetSceneId: null,
-            addedLinesCount: 0,
-            removedLinesCount: 0,
-          });
-        } else if (i <= targetScript.sceneCount) {
-          diffs.push({
-            sceneNumber: `${i}`,
-            heading: `SCENE ${i} (NEW)`,
-            changeType: "ADDED",
-            baseSceneId: null,
-            targetSceneId: null,
-            addedLinesCount: 20,
-            removedLinesCount: 0,
-          });
-        } else {
-          diffs.push({
-            sceneNumber: `${i}`,
-            heading: `SCENE ${i}`,
-            changeType: "DELETED",
-            baseSceneId: null,
-            targetSceneId: null,
-            addedLinesCount: 0,
-            removedLinesCount: 20,
-          });
-        }
-      }
-    }
-
-    return diffs;
-  }
-
-  private extractSceneHeadings(rawText: string): Array<{
-    heading: string;
-    sceneNumber?: string;
-    lineCount: number;
-  }> {
-    const lines = rawText.split(/\r?\n/);
-    const scenes: Array<{
-      heading: string;
-      sceneNumber?: string;
-      lineCount: number;
-    }> = [];
-    let currentScene: {
-      heading: string;
-      sceneNumber?: string;
-      lineCount: number;
-    } | null = null;
-
-    const sluglineRegex =
-      /^(?:EXT\.|INT\.|INT\.\/EXT\.|I\/E\.|EST\.|SCENE)\s+(.+)$/i;
-
-    for (const line of lines) {
-      const match = line.trim().match(sluglineRegex);
-      if (match) {
-        if (currentScene) {
-          scenes.push(currentScene);
-        }
-        currentScene = {
-          heading: line.trim().toUpperCase(),
-          sceneNumber: `${scenes.length + 1}`,
-          lineCount: 1,
-        };
-      } else if (currentScene) {
-        currentScene.lineCount++;
-      }
-    }
-
-    if (currentScene) {
-      scenes.push(currentScene);
-    }
-
-    return scenes;
-  }
 
   private isEntityModified(
     baseEntity: CanonicalEntity,
     targetEntity: CanonicalEntity,
   ): boolean {
     if (baseEntity.type !== targetEntity.type) return true;
-    if (baseEntity.mentions.length !== targetEntity.mentions.length) return true;
+    if (baseEntity.mentions.length !== targetEntity.mentions.length)
+      return true;
 
     // Compare mention details
     for (let i = 0; i < baseEntity.mentions.length; i++) {

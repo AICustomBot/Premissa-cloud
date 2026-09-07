@@ -154,7 +154,10 @@ function evaluateBrandRisk(input: EntityRiskInput): LegalRiskAnalysis {
   }
 
   // Commercial exploitation or counterfeit confusion requiring clearance
-  if (input.hasCommercialExploitation || (!input.isNominativeFairUse && input.isRegisteredTrademark)) {
+  if (
+    input.hasCommercialExploitation ||
+    (!input.isNominativeFairUse && input.isRegisteredTrademark)
+  ) {
     return {
       pillar: "TRADEMARK_DILUTION_CONFUSION",
       severeContext: false,

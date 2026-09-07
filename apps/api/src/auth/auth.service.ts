@@ -14,7 +14,9 @@ export class AuthService {
     if (admin.apps.length === 0) {
       if (
         process.env.FIREBASE_CONFIG ||
-        process.env.GOOGLE_APPLICATION_CREDENTIALS
+        process.env.GOOGLE_APPLICATION_CREDENTIALS ||
+        process.env.NODE_ENV === "production" ||
+        process.env.K_SERVICE
       ) {
         try {
           admin.initializeApp();

@@ -104,4 +104,3 @@ export type ReportSummary = z.infer<typeof ReportSummary>;
 export type ReportFindingItem = z.infer<typeof ReportFindingItem>;
 export type ReportVerification = z.infer<typeof ReportVerification>;
 export type ClearanceReport = z.infer<typeof ClearanceReport>;
-

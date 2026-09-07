@@ -19,6 +19,7 @@ export type GateInput = {
   rewritePathSupported: boolean;
   strongConflict: boolean;
   severeContext: boolean;
+  allClaimsVerified?: boolean;
 };
 
 export type GateDecision = {
@@ -61,8 +62,11 @@ export const evaluateEvidenceGate = (input: GateInput): GateDecision => {
       if (weakMatch) reasonCodes.push("ENTITY_MATCH_WEAK");
       if (confidence.finalScore < CLEARED_MIN_CONFIDENCE)
         reasonCodes.push("CONFIDENCE_BELOW_CLEARED_THRESHOLD");
+      if (input.allClaimsVerified === false) reasonCodes.push("EVIDENCE_WEAK");
       const admitted =
-        !weakMatch && confidence.finalScore >= CLEARED_MIN_CONFIDENCE;
+        !weakMatch &&
+        confidence.finalScore >= CLEARED_MIN_CONFIDENCE &&
+        input.allClaimsVerified !== false;
       return decision(
         admitted ? "RESEARCH_CLEARED" : INSUFFICIENT,
         false,

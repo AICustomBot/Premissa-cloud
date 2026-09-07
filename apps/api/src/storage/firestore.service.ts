@@ -92,12 +92,12 @@ export class FirestoreService {
         process.env.FIRESTORE_PROJECT_ID ||
         process.env.GCP_PROJECT ||
         "elkhedr";
-      const databaseId =
-        process.env.FIRESTORE_DATABASE_ID ||
-        "ai-studio-permissa-c6dfc351-5d1e-4392-902d-ec4b5d09ea49";
+      const databaseId = process.env.FIRESTORE_DATABASE_ID || "(default)";
 
       if (
-        process.env.GOOGLE_APPLICATION_CREDENTIALS &&
+        (process.env.GOOGLE_APPLICATION_CREDENTIALS ||
+          process.env.NODE_ENV === "production" ||
+          process.env.K_SERVICE) &&
         !process.env.FIRESTORE_EMULATOR_HOST
       ) {
         // Live cloud mode enabled via service account
@@ -651,10 +651,7 @@ export class FirestoreService {
     return validated;
   }
 
-  async getFinding(
-    runId: string,
-    findingId: string,
-  ): Promise<Finding | null> {
+  async getFinding(runId: string, findingId: string): Promise<Finding | null> {
     const runFindings = this.findingsStore.get(runId);
     if (!runFindings) return null;
     const raw = runFindings.get(findingId);
@@ -796,7 +793,9 @@ export class FirestoreService {
           .doc(validated.id)
           .set(validated);
       } catch (err: unknown) {
-        this.logger.warn("Cloud clearance report save failed; using local store");
+        this.logger.warn(
+          "Cloud clearance report save failed; using local store",
+        );
       }
     }
   }
@@ -820,5 +819,3 @@ export class FirestoreService {
     );
   }
 }
-
-

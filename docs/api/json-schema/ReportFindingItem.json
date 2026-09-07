@@ -1,0 +1,65 @@
+{
+  "$ref": "#/definitions/ReportFindingItem",
+  "definitions": {
+    "ReportFindingItem": {
+      "type": "object",
+      "properties": {
+        "findingId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "entityId": {
+          "type": "string"
+        },
+        "entityName": {
+          "type": "string",
+          "default": "Unknown Entity"
+        },
+        "entityType": {
+          "type": "string",
+          "default": "UNKNOWN"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "RESEARCH_CLEARED",
+            "NEEDS_LICENCE",
+            "NEEDS_REWRITE",
+            "BLOCKED",
+            "INSUFFICIENT_EVIDENCE"
+          ],
+          "default": "INSUFFICIENT_EVIDENCE"
+        },
+        "confidenceScore": {
+          "type": "number",
+          "default": 0
+        },
+        "confidenceBand": {
+          "type": "string",
+          "default": "LOW"
+        },
+        "rationale": {
+          "type": "string",
+          "default": ""
+        },
+        "rewriteSuggestion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "citationsCount": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        }
+      },
+      "required": [
+        "findingId",
+        "entityId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

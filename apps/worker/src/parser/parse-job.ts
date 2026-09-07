@@ -77,25 +77,25 @@ const KNOWN_CANONICAL_ENTITIES: {
     canonicalName: "Noor Haddad",
     type: "PERSON_CHARACTER",
     aliases: ["Noor", "Haddad"],
-    patterns: [/\bNoor\s+Haddad\b/gi, /\bNOOR\b/g],
+    patterns: [/\bNoor\s+Haddad\b/gi, /\bNoor\b/gi, /\bNOOR\b/g],
   },
   {
     canonicalName: "Julian Voss",
     type: "PERSON_CHARACTER",
     aliases: ["Julian", "Voss"],
-    patterns: [/\bJulian\s+Voss\b/gi, /\bJULIAN\b/g],
+    patterns: [/\bJulian\s+Voss\b/gi, /\bJulian\b/gi, /\bJULIAN\b/g],
   },
   {
     canonicalName: "Layla Mansour",
     type: "PERSON_CHARACTER",
     aliases: ["Layla", "Mansour"],
-    patterns: [/\bLayla\s+Mansour\b/gi, /\bLAYLA\b/g],
+    patterns: [/\bLayla\s+Mansour\b/gi, /\bLayla\b/gi, /\bLAYLA\b/g],
   },
   {
     canonicalName: "Owen Reed",
     type: "PERSON_CHARACTER",
     aliases: ["Owen", "Reed"],
-    patterns: [/\bOwen\s+Reed\b/gi, /\bOWEN\b/g],
+    patterns: [/\bOwen\s+Reed\b/gi, /\bOwen\b/gi, /\bOWEN\b/g],
   },
   {
     canonicalName: "Apple",
@@ -242,6 +242,94 @@ function parseTextContent(textContent: string): {
 }
 
 /**
+ * Quarantined low-privilege parser for PDF screenplays.
+ * Enforces signatures, encryption checks, page limits, and text stream extraction.
+ */
+export function parsePdfContent(content: Buffer | string): {
+  paragraphs: ParsedParagraph[];
+  pageCount: number;
+} {
+  const buffer = Buffer.isBuffer(content)
+    ? content
+    : Buffer.from(content, "latin1");
+  const rawStr = buffer.toString("latin1");
+
+  // 1. Signature Check
+  if (!rawStr.startsWith("%PDF-")) {
+    throw new Error(
+      "FILE_SIGNATURE_INVALID: Missing standard %PDF magic header.",
+    );
+  }
+
+  // 2. Encryption / Password Check
+  if (/\/Encrypt\b/.test(rawStr)) {
+    throw new Error(
+      "PDF_LOCKED: Encrypted or password-protected PDF cannot be ingested.",
+    );
+  }
+
+  // 3. Count Pages (/Type /Page)
+  const pageMatches = rawStr.match(/\/Type\s*\/Page\b(?!s)/g);
+  let pageCount = pageMatches ? pageMatches.length : 1;
+  const countMatch = rawStr.match(/\/Type\s*\/Pages[\s\S]*?\/Count\s+(\d+)/);
+  if (countMatch && countMatch[1]) {
+    pageCount = Math.max(pageCount, parseInt(countMatch[1], 10));
+  }
+
+  if (pageCount > MAX_PAGE_COUNT) {
+    throw new Error(
+      `PAGE_LIMIT_EXCEEDED: PDF page count (${pageCount}) exceeds 20-page limit.`,
+    );
+  }
+
+  // 4. Extract Text Streams
+  const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+  let streamMatch: RegExpExecArray | null;
+  const textLines: string[] = [];
+
+  while ((streamMatch = streamRegex.exec(rawStr)) !== null) {
+    let streamText = streamMatch[1] ?? "";
+    const streamStart = streamMatch.index + streamMatch[0].indexOf("\n") + 1;
+    const streamEnd = streamMatch.index + streamMatch[0].lastIndexOf("\n");
+    const streamSlice = buffer.subarray(streamStart, streamEnd);
+
+    try {
+      const zlib = require("node:zlib");
+      const inflated = zlib.inflateSync(streamSlice);
+      streamText = inflated.toString("latin1");
+    } catch {
+      // Raw or uncompressed stream
+    }
+
+    const btRegex = /BT([\s\S]*?)ET/g;
+    let btMatch: RegExpExecArray | null;
+    while ((btMatch = btRegex.exec(streamText)) !== null) {
+      const btContent = btMatch[1] ?? "";
+      const stringRegex = /\(((?:[^()\\]|\\.)*)\)\s*(?:'|Tj|TJ)/g;
+      let sMatch: RegExpExecArray | null;
+      while ((sMatch = stringRegex.exec(btContent)) !== null) {
+        const rawT = sMatch[1] ?? "";
+        const unescaped = rawT
+          .replace(/\\([()\\])/g, "$1")
+          .replace(/\\n/g, "\n")
+          .replace(/\\r/g, "\r")
+          .replace(/\\t/g, "\t");
+        if (unescaped.trim()) {
+          textLines.push(unescaped.trim());
+        }
+      }
+    }
+  }
+
+  const fullText = textLines.join("\n");
+  const parsed = parseTextContent(fullText);
+  return {
+    paragraphs: parsed.paragraphs,
+    pageCount: Math.min(pageCount, MAX_PAGE_COUNT),
+  };
+}
+
+/**
  * Executes quarantined low-privilege parsing of screenplay documents.
  */
 export const runParserJob = async (
@@ -263,7 +351,7 @@ export const runParserJob = async (
     rawContent =
       typeof input.content === "string"
         ? input.content
-        : input.content.toString("utf-8");
+        : input.content.toString("latin1");
   } else {
     // Default to golden fixture self-test
     const fs = await import("node:fs");
@@ -292,7 +380,13 @@ export const runParserJob = async (
   }
 
   // Pre-flight Size Guard
-  const byteLength = Buffer.byteLength(rawContent, "utf-8");
+  const contentBuffer = Buffer.isBuffer(input?.content)
+    ? input.content
+    : Buffer.from(
+        rawContent,
+        typeof input?.content === "string" ? "utf-8" : "latin1",
+      );
+  const byteLength = contentBuffer.byteLength;
   if (byteLength > MAX_BYTE_SIZE) {
     throw new Error(
       `PAYLOAD_TOO_LARGE: File size (${byteLength} bytes) exceeds 20MB quarantine limit.`,
@@ -301,13 +395,20 @@ export const runParserJob = async (
 
   // Checksum calculation (SHA-256)
   const calculatedSha256 = createHash("sha256")
-    .update(rawContent)
+    .update(contentBuffer)
     .digest("hex");
 
   // Parse according to format
-  const { paragraphs, pageCount } =
-    sourceType === "FDX"
-      ? parseFdxContent(rawContent)
+  const isFdxXml =
+    sourceType === "FDX" &&
+    (rawContent.includes("<FinalDraft") ||
+      rawContent.includes("<?xml") ||
+      rawContent.includes("<Paragraph"));
+
+  const { paragraphs, pageCount } = isFdxXml
+    ? parseFdxContent(rawContent)
+    : sourceType === "PDF"
+      ? parsePdfContent(contentBuffer)
       : parseTextContent(rawContent);
 
   // Pre-flight Page Count Guard
@@ -434,11 +535,113 @@ export const runParserJob = async (
     )
     .join("\n\n");
 
-  // Entity Mention Extraction
+  // Entity Mention Extraction with Dynamic Candidate Extraction & Alias Resolution (Batch 3)
   const entities: CanonicalEntity[] = [];
   const now = new Date().toISOString();
 
-  for (const def of KNOWN_CANONICAL_ENTITIES) {
+  // 1. Discover speaking character candidates and resolve alias links (e.g. "Julian" -> "Julian Voss")
+  const speakerFrequency = new Map<string, number>();
+  for (const p of paragraphs) {
+    if (p.type === "Character") {
+      const clean = p.text.replace(/\s*\([^)]*\)/g, "").trim();
+      if (
+        clean.length >= 2 &&
+        !/^(SCENE|CUT TO|FADE IN|FADE OUT|FLASHBACK)/i.test(clean)
+      ) {
+        const titleCase = clean
+          .toLowerCase()
+          .split(/\s+/)
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(" ");
+        speakerFrequency.set(
+          titleCase,
+          (speakerFrequency.get(titleCase) ?? 0) + 1,
+        );
+      }
+    }
+  }
+
+  // 2. Alias clustering: longer multi-token names become canonical anchors
+  const sortedSpeakers = Array.from(speakerFrequency.keys()).sort(
+    (a, b) =>
+      b.split(/\s+/).length - a.split(/\s+/).length || b.length - a.length,
+  );
+
+  const dynamicRoster: Array<{
+    canonicalName: string;
+    type: (typeof EntityType)["_type"];
+    aliases: string[];
+    patterns: RegExp[];
+  }> = [];
+
+  const claimedAliases = new Set<string>();
+
+  for (const speaker of sortedSpeakers) {
+    if (claimedAliases.has(speaker.toLowerCase())) continue;
+
+    const parts = speaker.split(/\s+/);
+    const aliases: string[] = [];
+
+    if (parts.length > 1) {
+      for (const part of parts) {
+        if (part.length >= 3) {
+          aliases.push(part);
+          claimedAliases.add(part.toLowerCase());
+        }
+      }
+    }
+
+    const searchTerms = [speaker, ...aliases];
+    const escapedTerms = searchTerms.map((t) =>
+      t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+    );
+    const pattern = new RegExp(`\\b(${escapedTerms.join("|")})\\b`, "gi");
+
+    dynamicRoster.push({
+      canonicalName: speaker,
+      type: "PERSON_CHARACTER",
+      aliases,
+      patterns: [pattern],
+    });
+
+    claimedAliases.add(speaker.toLowerCase());
+  }
+
+  // 3. Merge dynamic candidates with KNOWN_CANONICAL_ENTITIES
+  const activeEntityCatalog = [...KNOWN_CANONICAL_ENTITIES];
+  for (const dyn of dynamicRoster) {
+    const existingIndex = activeEntityCatalog.findIndex(
+      (c) =>
+        c.canonicalName.toLowerCase() === dyn.canonicalName.toLowerCase() ||
+        c.aliases.some(
+          (a) => a.toLowerCase() === dyn.canonicalName.toLowerCase(),
+        ) ||
+        c.canonicalName
+          .toLowerCase()
+          .split(/\s+/)
+          .includes(dyn.canonicalName.toLowerCase()),
+    );
+    if (existingIndex >= 0) {
+      const existing = activeEntityCatalog[existingIndex]!;
+      const mergedAliases = Array.from(
+        new Set([...existing.aliases, ...dyn.aliases, dyn.canonicalName]),
+      ).filter((a) => a.toLowerCase() !== existing.canonicalName.toLowerCase());
+      activeEntityCatalog[existingIndex] = {
+        ...existing,
+        aliases: mergedAliases,
+      };
+    } else if (
+      dyn.canonicalName.split(/\s+/).length > 1 &&
+      !/^(VENUE\s+MANAGER|SECURITY\s+GUARD|POLICE\s+OFFICER|STAGE\s+MANAGER|DESK\s+CLERK|WAITER|WAITRESS|DOCTOR|NURSE|DRIVER|REPORTER|BYSTANDER|ANNOUNCER|HOST|TECHNICIAN|OPERATOR|OFFICER|GUARD|SOLDIER|WITNESS)/i.test(
+        dyn.canonicalName,
+      )
+    ) {
+      // Only add non-catalog characters if they have a multi-word named identity (not generic occupation)
+      activeEntityCatalog.push(dyn);
+    }
+  }
+
+  for (const def of activeEntityCatalog) {
     const mentions: {
       sceneId: string;
       sourceRange: { start: number; end: number };

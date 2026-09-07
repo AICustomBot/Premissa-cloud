@@ -1,0 +1,45 @@
+{
+  "$ref": "#/definitions/DifferentialClearanceRunRequest",
+  "definitions": {
+    "DifferentialClearanceRunRequest": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "targetScriptVersionId": {
+          "$ref": "#/definitions/DifferentialClearanceRunRequest/properties/projectId"
+        },
+        "baseScriptVersionId": {
+          "$ref": "#/definitions/DifferentialClearanceRunRequest/properties/projectId"
+        },
+        "baseRunId": {
+          "$ref": "#/definitions/DifferentialClearanceRunRequest/properties/projectId"
+        },
+        "jurisdiction": {
+          "type": "string",
+          "enum": [
+            "US"
+          ],
+          "default": "US"
+        },
+        "autoCarryForward": {
+          "type": "boolean",
+          "default": true
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "projectId",
+        "targetScriptVersionId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

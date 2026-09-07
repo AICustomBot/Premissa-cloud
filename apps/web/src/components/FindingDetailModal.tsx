@@ -77,6 +77,21 @@ export const FindingDetailModal: React.FC<FindingDetailModalProps> = ({
   const [copiedCitationId, setCopiedCitationId] = useState<string | null>(null);
   const [copiedSummary, setCopiedSummary] = useState(false);
 
+  // Keyboard accessibility: Escape to close, Left/Right arrows to navigate
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      } else if (e.key === "ArrowLeft" && hasPrev && onNavigate) {
+        onNavigate("prev");
+      } else if (e.key === "ArrowRight" && hasNext && onNavigate) {
+        onNavigate("next");
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, onNavigate, hasPrev, hasNext]);
+
   const confidence = evaluation.confidence;
   const score = confidence.finalScore;
 

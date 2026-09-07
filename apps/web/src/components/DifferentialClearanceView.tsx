@@ -39,13 +39,37 @@ interface ScriptRevision {
   entitiesCount: number;
 }
 
+interface LineDiffDetail {
+  type: "ADDED" | "MODIFIED" | "REMOVED" | "UNTOUCHED";
+  speaker?: string;
+  text: string;
+  oldText?: string;
+}
+
 interface SceneDiffItem {
   sceneNumber: string;
   heading: string;
   changeType: "ADDED" | "MODIFIED" | "DELETED" | "UNTOUCHED";
   addedLines: number;
   removedLines: number;
+  modifiedLines?: number;
   excerpt?: string;
+  lineChanges?: LineDiffDetail[];
+}
+
+export interface ClaimMatrixItem {
+  id: string;
+  entityName: string;
+  entityType: string;
+  claimCategory: string;
+  claimStatement: string;
+  authorityRequirement: string;
+  sourceTier: "TIER_1" | "TIER_2" | "TIER_3";
+  isIndependent: boolean;
+  status: "VERIFIED" | "UNVERIFIED" | "CONTRADICTED";
+  confidenceScore: number;
+  promotableToResearchCleared: boolean;
+  notes: string;
 }
 
 interface EntityDeltaItem {
@@ -117,6 +141,7 @@ const MOCK_SCENE_DIFFS: SceneDiffItem[] = [
     changeType: "UNTOUCHED",
     addedLines: 0,
     removedLines: 0,
+    modifiedLines: 0,
     excerpt: "Rain streaks the high-rise glass overlooking Manhattan.",
   },
   {
@@ -125,8 +150,31 @@ const MOCK_SCENE_DIFFS: SceneDiffItem[] = [
     changeType: "MODIFIED",
     addedLines: 8,
     removedLines: 2,
+    modifiedLines: 3,
     excerpt:
       "VANCE adjusts the Chrono-Diver watch while taking a sip of vintage scotch.",
+    lineChanges: [
+      {
+        type: "REMOVED",
+        speaker: "VANCE",
+        text: 'VANCE: "We depart at midnight."',
+      },
+      {
+        type: "ADDED",
+        speaker: "VANCE",
+        text: 'VANCE: "We depart on the 0200 Aerostream Luxury flight."',
+      },
+      {
+        type: "MODIFIED",
+        text: "Action: He fastens the sapphire Chrono-Diver watch tightly against his cuff.",
+        oldText: "Action: He checks his wrist watch.",
+      },
+      {
+        type: "ADDED",
+        speaker: "STEWARDESS",
+        text: 'STEWARDESS: "Your flight credentials are confirmed, Mr. Vance."',
+      },
+    ],
   },
   {
     sceneNumber: "3",
@@ -134,6 +182,7 @@ const MOCK_SCENE_DIFFS: SceneDiffItem[] = [
     changeType: "DELETED",
     addedLines: 0,
     removedLines: 24,
+    modifiedLines: 0,
     excerpt: "[Scene removed in Blue Revision]",
   },
   {
@@ -142,8 +191,110 @@ const MOCK_SCENE_DIFFS: SceneDiffItem[] = [
     changeType: "ADDED",
     addedLines: 32,
     removedLines: 0,
+    modifiedLines: 0,
     excerpt:
       "Neon reflections shimmer across the terrace. A sleek billboard advertises Quantum Motors.",
+    lineChanges: [
+      {
+        type: "ADDED",
+        text: "Action: The sprawling cityscape dazzles beneath electric blue smog.",
+      },
+      {
+        type: "ADDED",
+        text: "Action: High above, a glowing digital marquee displays: QUANTUM MOTORS - ZERO INERTIA.",
+      },
+      {
+        type: "ADDED",
+        speaker: "BARTENDER",
+        text: 'BARTENDER: "The prototype was spotted on 5th Avenue this morning."',
+      },
+    ],
+  },
+];
+
+export const MOCK_EVIDENCE_CLAIMS: ClaimMatrixItem[] = [
+  {
+    id: "claim-1",
+    entityName: "Dr. Alistair Vance",
+    entityType: "PERSON_CHARACTER",
+    claimCategory: "DEFAMATION_FALSE_LIGHT_STATUS",
+    claimStatement:
+      "Deceased historical figure (d. 1948); no post-mortem right of publicity in NY jurisdiction.",
+    authorityRequirement:
+      "Tier 1 Vital Records + Independent Tier 2 Historical Register",
+    sourceTier: "TIER_1",
+    isIndependent: true,
+    status: "VERIFIED",
+    confidenceScore: 92,
+    promotableToResearchCleared: true,
+    notes:
+      "Verified via NY State Vital Records Archives & Library of Congress Registry. Gate admission passing (score 92 >= 85).",
+  },
+  {
+    id: "claim-2",
+    entityName: "The Quantum Enigma",
+    entityType: "COPYRIGHTED_WORK",
+    claimCategory: "COPYRIGHT_LITERARY_OPTION",
+    claimStatement:
+      "Pre-1926 publication date confirms public domain status worldwide.",
+    authorityRequirement:
+      "Tier 1 US Copyright Office Catalog + Tier 2 Academic Archive",
+    sourceTier: "TIER_1",
+    isIndependent: true,
+    status: "VERIFIED",
+    confidenceScore: 95,
+    promotableToResearchCleared: true,
+    notes:
+      "Verified via LOC Copyright Renewal Records (Reg #A-102941, no renewal filed). Gate admission passing (score 95 >= 85).",
+  },
+  {
+    id: "claim-3",
+    entityName: "Aerostream Luxury",
+    entityType: "BRAND_BUSINESS_PRODUCT",
+    claimCategory: "TRADEMARK_REGISTRY",
+    claimStatement:
+      "Active registered trademark in Class 12 (Aviation & Transport) owned by Aerostream Global LLC.",
+    authorityRequirement: "Tier 1 USPTO TESS Registry / WIPO Madrid System",
+    sourceTier: "TIER_1",
+    isIndependent: true,
+    status: "VERIFIED",
+    confidenceScore: 88,
+    promotableToResearchCleared: false,
+    notes:
+      "Verified active commercial mark. Prominent script placement creates endorsement risk. Inadmissible to Cleared: classified as NEEDS_LICENCE.",
+  },
+  {
+    id: "claim-4",
+    entityName: "Quantum Motors",
+    entityType: "BRAND_BUSINESS_PRODUCT",
+    claimCategory: "TRADEMARK_REGISTRY",
+    claimStatement:
+      "Active federal trademark registration #97241892 for electric autonomous vehicle concepts.",
+    authorityRequirement: "Tier 1 USPTO Federal Register",
+    sourceTier: "TIER_1",
+    isIndependent: true,
+    status: "VERIFIED",
+    confidenceScore: 90,
+    promotableToResearchCleared: false,
+    notes:
+      "Newly added entity in Draft 3. Active registration confirmed. Inadmissible to Cleared pending producer license confirmation.",
+  },
+  {
+    id: "claim-5",
+    entityName: "Starlight Rooftop Lounge",
+    entityType: "LOCATION_FACILITY",
+    claimCategory: "ARCHITECTURAL_COPYRIGHT_LOCATION",
+    claimStatement:
+      "Commercial private hospitality venue with proprietary signage and distinctive interior décor.",
+    authorityRequirement:
+      "Tier 2 Commercial Land Registry + Property Release Verification",
+    sourceTier: "TIER_2",
+    isIndependent: false,
+    status: "UNVERIFIED",
+    confidenceScore: 62,
+    promotableToResearchCleared: false,
+    notes:
+      "Missing executed location agreement or property release. Inadmissible to Cleared (confidence 62 < 85, claims unverified).",
   },
 ];
 
@@ -225,7 +376,7 @@ export const DifferentialClearanceView: React.FC<
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [runProgress, setRunProgress] = useState<number>(0);
   const [activeSubTab, setActiveSubTab] = useState<
-    "entities" | "scenes" | "audit"
+    "entities" | "scenes" | "matrix" | "audit"
   >("entities");
   const [autoCarryForward, setAutoCarryForward] = useState<boolean>(true);
   const [completedResult, setCompletedResult] = useState<{
@@ -527,6 +678,16 @@ export const DifferentialClearanceView: React.FC<
             Scene & Heading Changes ({MOCK_SCENE_DIFFS.length})
           </button>
           <button
+            onClick={() => setActiveSubTab("matrix")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              activeSubTab === "matrix"
+                ? "bg-slate-900 text-white shadow-xs"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+            }`}
+          >
+            Evidence Synthesis Matrix ({MOCK_EVIDENCE_CLAIMS.length})
+          </button>
+          <button
             onClick={() => setActiveSubTab("audit")}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
               activeSubTab === "audit"
@@ -687,9 +848,18 @@ export const DifferentialClearanceView: React.FC<
                     </span>
                   )}
                   {scene.changeType === "MODIFIED" && (
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                      +{scene.addedLines} / -{scene.removedLines} lines modified
-                    </span>
+                    <div className="flex items-center space-x-1.5">
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                        +{scene.addedLines} / -{scene.removedLines} lines
+                      </span>
+                      {Boolean(
+                        scene.modifiedLines && scene.modifiedLines > 0,
+                      ) && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-800 border border-orange-200">
+                          {scene.modifiedLines} dialogue/action lines modified
+                        </span>
+                      )}
+                    </div>
                   )}
                   {scene.changeType === "DELETED" && (
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200">
@@ -703,15 +873,186 @@ export const DifferentialClearanceView: React.FC<
                   )}
                 </div>
               </div>
-              <p className="text-xs text-slate-600 font-mono bg-white/70 p-2 rounded-lg border border-slate-100">
+              <p className="text-xs text-slate-600 font-mono bg-white/70 p-2 rounded-lg border border-slate-100 mb-2">
                 {scene.excerpt}
               </p>
+
+              {scene.lineChanges && scene.lineChanges.length > 0 && (
+                <div className="mt-3 pt-2 border-t border-slate-200/60">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+                    Line-by-Line Revision Diff Details:
+                  </span>
+                  <div className="space-y-1 font-mono text-xs">
+                    {scene.lineChanges.map((lc, lcIdx) => (
+                      <div
+                        key={lcIdx}
+                        className={`p-1.5 rounded-md flex items-start space-x-2 border ${
+                          lc.type === "ADDED"
+                            ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+                            : lc.type === "REMOVED"
+                              ? "bg-rose-50 border-rose-200 text-rose-900 line-through opacity-80"
+                              : lc.type === "MODIFIED"
+                                ? "bg-amber-50 border-amber-200 text-amber-900"
+                                : "bg-slate-50 border-slate-200 text-slate-700"
+                        }`}
+                      >
+                        <span
+                          className={`px-1.5 py-0.2 rounded text-[10px] font-bold tracking-tight shrink-0 ${
+                            lc.type === "ADDED"
+                              ? "bg-emerald-200 text-emerald-800"
+                              : lc.type === "REMOVED"
+                                ? "bg-rose-200 text-rose-800"
+                                : "bg-amber-200 text-amber-800"
+                          }`}
+                        >
+                          {lc.type}
+                        </span>
+                        <div className="flex-1">
+                          <div>{lc.text}</div>
+                          {lc.oldText && (
+                            <div className="text-[11px] text-slate-500 mt-0.5">
+                              Was: {lc.oldText}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
       )}
 
-      {/* Sub-Tab 3: Revision Chain of Custody & Certificate Seals */}
+      {/* Sub-Tab 3: Evidence Synthesis Matrix (Formal Claims Verification) */}
+      {activeSubTab === "matrix" && (
+        <div className="space-y-4">
+          <div className="p-4 rounded-xl bg-slate-900 text-white border border-slate-800">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="flex items-center space-x-2 mb-1">
+                  <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                  <h3 className="text-sm font-bold text-white tracking-tight">
+                    Deterministic Evidence Synthesis Matrix
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-300 max-w-3xl leading-relaxed">
+                  Formal claim verification layer enforcing statutory and trade
+                  evidence standards. Entities are promoted to{" "}
+                  <span className="font-mono text-emerald-300 font-bold">
+                    Research-cleared
+                  </span>{" "}
+                  only when all underlying claims are backed by Tier 1 statutory
+                  registers or two independent Tier 2 sources, zero
+                  contradictions exist, and the evidence gate confidence reaches
+                  $\ge 85$.
+                </p>
+              </div>
+              <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-mono font-bold border border-emerald-500/30 shrink-0">
+                Gate Confidence $\ge 85$
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider">
+                  <tr>
+                    <th className="px-4 py-3">Entity & Claim</th>
+                    <th className="px-4 py-3">Category</th>
+                    <th className="px-4 py-3">Authority Standard</th>
+                    <th className="px-4 py-3">Verification Status</th>
+                    <th className="px-4 py-3">Gate Promotability</th>
+                    <th className="px-4 py-3">Synthesis Notes</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {MOCK_EVIDENCE_CLAIMS.map((claim) => (
+                    <tr
+                      key={claim.id}
+                      className="hover:bg-slate-50/70 transition-colors"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="font-bold text-slate-900">
+                          {claim.entityName}
+                        </div>
+                        <div className="text-slate-500 text-[11px] mt-0.5 max-w-xs line-clamp-2">
+                          {claim.claimStatement}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-mono text-[10px] border border-slate-200">
+                          {claim.claimCategory}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center space-x-1.5">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              claim.sourceTier === "TIER_1"
+                                ? "bg-indigo-100 text-indigo-800 border border-indigo-200"
+                                : "bg-sky-100 text-sky-800 border border-sky-200"
+                            }`}
+                          >
+                            {claim.sourceTier}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-slate-500 block mt-0.5">
+                          {claim.authorityRequirement}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {claim.status === "VERIFIED" && (
+                          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>VERIFIED</span>
+                          </span>
+                        )}
+                        {claim.status === "UNVERIFIED" && (
+                          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                            <span>UNVERIFIED</span>
+                          </span>
+                        )}
+                        {claim.status === "CONTRADICTED" && (
+                          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                            <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                            <span>CONTRADICTED</span>
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {claim.promotableToResearchCleared ? (
+                          <span className="inline-flex items-center space-x-1 text-emerald-700 font-bold text-[11px]">
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>
+                              CLEARED (Score: {claim.confidenceScore})
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center space-x-1 text-slate-600 font-medium text-[11px]">
+                            <Lock className="w-3.5 h-3.5 text-amber-600" />
+                            <span>
+                              HELD FOR REVIEW ({claim.confidenceScore})
+                            </span>
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600 text-[11px] max-w-sm">
+                        {claim.notes}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sub-Tab 4: Revision Chain of Custody & Certificate Seals */}
       {activeSubTab === "audit" && (
         <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
           <div>

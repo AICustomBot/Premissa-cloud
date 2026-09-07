@@ -7,7 +7,9 @@ import {
 } from "../src/index";
 import type { CanonicalEntity, Citation } from "@permissa/contracts";
 
-const createMockEntity = (overrides?: Partial<CanonicalEntity>): CanonicalEntity => ({
+const createMockEntity = (
+  overrides?: Partial<CanonicalEntity>,
+): CanonicalEntity => ({
   id: "018f3a5e-7a91-7d1b-8e2b-4b6a8b1a2c3d",
   scriptVersionId: "018f3a5e-7a91-7d1b-8e2b-4b6a8b1a2c3e",
   type: "PERSON_CHARACTER",
@@ -19,7 +21,7 @@ const createMockEntity = (overrides?: Partial<CanonicalEntity>): CanonicalEntity
       sceneId: "018f3a5e-7a91-7d1b-8e2b-4b6a8b1a2c3d",
       sourceRange: { start: 1, end: 10 },
       contextExcerpt: "test",
-    }
+    },
   ],
   confirmed: true,
   createdAt: new Date().toISOString(),
@@ -147,7 +149,9 @@ describe("Deterministic Evidence Gate & Policy Synthesis", () => {
     expect(result.finding.proposedStatus).toBe("RESEARCH_CLEARED");
     expect(result.finding.admittedStatus).toBe("RESEARCH_CLEARED");
     expect(result.finding.confidence.finalScore).toBeGreaterThanOrEqual(85);
-    expect(result.finding.confidence.formulaVersion).toBe(CONFIDENCE_FORMULA_VERSION);
+    expect(result.finding.confidence.formulaVersion).toBe(
+      CONFIDENCE_FORMULA_VERSION,
+    );
     expect(result.finding.version).toBe(1);
     expect(result.finding.professionalConfirmationRequired).toBe(false);
   });
@@ -170,7 +174,9 @@ describe("Deterministic Evidence Gate & Policy Synthesis", () => {
     expect(result.finding.proposedStatus).toBe("RESEARCH_CLEARED");
     expect(result.finding.admittedStatus).toBe("INSUFFICIENT_EVIDENCE");
     expect(result.finding.confidence.finalScore).toBeLessThan(85);
-    expect(result.finding.reasonCodes).toContain("CONFIDENCE_BELOW_CLEARED_THRESHOLD");
+    expect(result.finding.reasonCodes).toContain(
+      "CONFIDENCE_BELOW_CLEARED_THRESHOLD",
+    );
   });
 
   it("Requires professional confirmation when proposing BLOCKED status", () => {
@@ -191,7 +197,9 @@ describe("Deterministic Evidence Gate & Policy Synthesis", () => {
     expect(result.finding.proposedStatus).toBe("BLOCKED");
     expect(result.finding.admittedStatus).toBe("BLOCKED");
     expect(result.finding.professionalConfirmationRequired).toBe(true);
-    expect(result.finding.reasonCodes).toContain("PROFESSIONAL_CONFIRMATION_REQUIRED");
+    expect(result.finding.reasonCodes).toContain(
+      "PROFESSIONAL_CONFIRMATION_REQUIRED",
+    );
   });
 
   it("Forces confidence score to 0 upon provider failure or budget limits", () => {
@@ -207,6 +215,8 @@ describe("Deterministic Evidence Gate & Policy Synthesis", () => {
 
     expect(failedResult.finding.confidence.finalScore).toBe(0);
     expect(failedResult.finding.admittedStatus).toBe("INSUFFICIENT_EVIDENCE");
-    expect(failedResult.finding.confidence.invalidations).toContain("PROVIDER_FAILED");
+    expect(failedResult.finding.confidence.invalidations).toContain(
+      "PROVIDER_FAILED",
+    );
   });
 });

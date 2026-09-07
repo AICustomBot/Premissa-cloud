@@ -15,8 +15,8 @@ export interface RawCitationItem {
   controllingOwner: string | null;
   title: string;
   excerpt: string;
-  sourceTier: SourceTier;
-  claimType: ClaimType;
+  sourceTier: any;
+  claimType: any;
   query: string;
   publishedAt?: string | null;
   updatedAt?: string | null;

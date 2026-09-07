@@ -481,10 +481,27 @@ export class ReviewsService {
 
     const reportFindings: ReportFindingItem[] = findings.map((f) => {
       const entity = entityMap.get(f.entityId);
-      const rawStatus = f.status || (f as unknown as { admittedStatus?: string }).admittedStatus || (f as unknown as { proposedStatus?: string }).proposedStatus || "INSUFFICIENT_EVIDENCE";
-      const status = (["RESEARCH_CLEARED", "NEEDS_LICENCE", "NEEDS_REWRITE", "BLOCKED", "INSUFFICIENT_EVIDENCE"].includes(rawStatus)
-        ? rawStatus
-        : "INSUFFICIENT_EVIDENCE") as "RESEARCH_CLEARED" | "NEEDS_LICENCE" | "NEEDS_REWRITE" | "BLOCKED" | "INSUFFICIENT_EVIDENCE";
+      const rawStatus =
+        f.admittedStatus ||
+        (f as unknown as { admittedStatus?: string }).admittedStatus ||
+        (f as unknown as { proposedStatus?: string }).proposedStatus ||
+        "INSUFFICIENT_EVIDENCE";
+      const status = (
+        [
+          "RESEARCH_CLEARED",
+          "NEEDS_LICENCE",
+          "NEEDS_REWRITE",
+          "BLOCKED",
+          "INSUFFICIENT_EVIDENCE",
+        ].includes(rawStatus)
+          ? rawStatus
+          : "INSUFFICIENT_EVIDENCE"
+      ) as
+        | "RESEARCH_CLEARED"
+        | "NEEDS_LICENCE"
+        | "NEEDS_REWRITE"
+        | "BLOCKED"
+        | "INSUFFICIENT_EVIDENCE";
 
       if (status === "RESEARCH_CLEARED") clearedCount++;
       else if (status === "NEEDS_LICENCE") licenceRequiredCount++;
@@ -492,20 +509,25 @@ export class ReviewsService {
       else if (status === "BLOCKED") blockedCount++;
       else insufficientEvidenceCount++;
 
-      const score = f.confidence?.finalScore ?? f.confidenceScore ?? 0;
-      const band = f.confidence?.band || f.confidenceBand || (score >= 85 ? "HIGH" : score >= 60 ? "MEDIUM" : "LOW");
+      const score = f.confidence?.finalScore ?? 0;
+      const band =
+        f.confidence?.band ||
+        (score >= 85 ? "HIGH" : score >= 60 ? "MEDIUM" : "LOW");
 
       return {
         findingId: f.id,
         entityId: f.entityId,
         entityName: entity?.canonicalName ?? "Unknown Entity",
-        entityType: entity?.type ?? (entity as unknown as { category?: string })?.category ?? "UNKNOWN",
+        entityType:
+          entity?.type ??
+          (entity as unknown as { category?: string })?.category ??
+          "UNKNOWN",
         status,
         confidenceScore: score,
         confidenceBand: band,
         rationale: f.rationale ?? "Clearance finding review item.",
         rewriteSuggestion: f.rewriteSuggestion,
-        citationsCount: f.citationIds?.length ?? 0,
+        citationsCount: 0,
       };
     });
 
@@ -515,7 +537,8 @@ export class ReviewsService {
       overallRiskLevel = "ELEVATED";
     else if (insufficientEvidenceCount > 0) overallRiskLevel = "LOW";
 
-    const scriptChecksum = run.scriptChecksumSha256 || "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const scriptChecksum =
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
     const digest = computeReportDigest({
       id: reportId,
@@ -625,10 +648,27 @@ export class ReviewsService {
 
     const reportFindings: ReportFindingItem[] = findings.map((f) => {
       const entity = entityMap.get(f.entityId);
-      const rawStatus = f.status || (f as unknown as { admittedStatus?: string }).admittedStatus || (f as unknown as { proposedStatus?: string }).proposedStatus || "INSUFFICIENT_EVIDENCE";
-      const status = (["RESEARCH_CLEARED", "NEEDS_LICENCE", "NEEDS_REWRITE", "BLOCKED", "INSUFFICIENT_EVIDENCE"].includes(rawStatus)
-        ? rawStatus
-        : "INSUFFICIENT_EVIDENCE") as "RESEARCH_CLEARED" | "NEEDS_LICENCE" | "NEEDS_REWRITE" | "BLOCKED" | "INSUFFICIENT_EVIDENCE";
+      const rawStatus =
+        f.admittedStatus ||
+        (f as unknown as { admittedStatus?: string }).admittedStatus ||
+        (f as unknown as { proposedStatus?: string }).proposedStatus ||
+        "INSUFFICIENT_EVIDENCE";
+      const status = (
+        [
+          "RESEARCH_CLEARED",
+          "NEEDS_LICENCE",
+          "NEEDS_REWRITE",
+          "BLOCKED",
+          "INSUFFICIENT_EVIDENCE",
+        ].includes(rawStatus)
+          ? rawStatus
+          : "INSUFFICIENT_EVIDENCE"
+      ) as
+        | "RESEARCH_CLEARED"
+        | "NEEDS_LICENCE"
+        | "NEEDS_REWRITE"
+        | "BLOCKED"
+        | "INSUFFICIENT_EVIDENCE";
 
       if (status === "RESEARCH_CLEARED") clearedCount++;
       else if (status === "NEEDS_LICENCE") licenceRequiredCount++;
@@ -636,20 +676,25 @@ export class ReviewsService {
       else if (status === "BLOCKED") blockedCount++;
       else insufficientEvidenceCount++;
 
-      const score = f.confidence?.finalScore ?? f.confidenceScore ?? 0;
-      const band = f.confidence?.band || f.confidenceBand || (score >= 85 ? "HIGH" : score >= 60 ? "MEDIUM" : "LOW");
+      const score = f.confidence?.finalScore ?? 0;
+      const band =
+        f.confidence?.band ||
+        (score >= 85 ? "HIGH" : score >= 60 ? "MEDIUM" : "LOW");
 
       return {
         findingId: f.id,
         entityId: f.entityId,
         entityName: entity?.canonicalName ?? "Unknown Entity",
-        entityType: entity?.type ?? (entity as unknown as { category?: string })?.category ?? "UNKNOWN",
+        entityType:
+          entity?.type ??
+          (entity as unknown as { category?: string })?.category ??
+          "UNKNOWN",
         status,
         confidenceScore: score,
         confidenceBand: band,
         rationale: f.rationale ?? "Clearance finding review item.",
         rewriteSuggestion: f.rewriteSuggestion,
-        citationsCount: f.citationIds?.length ?? 0,
+        citationsCount: 0,
       };
     });
 
@@ -664,7 +709,8 @@ export class ReviewsService {
     const versionNumber = existingReports.length + 1;
     const reportId = generateUuidV7();
     const now = new Date().toISOString();
-    const scriptChecksum = run.scriptChecksumSha256 || "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const scriptChecksum =
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
     const digest = computeReportDigest({
       id: reportId,

@@ -1,0 +1,15 @@
+{
+  "$ref": "#/definitions/ProviderType",
+  "definitions": {
+    "ProviderType": {
+      "type": "string",
+      "enum": [
+        "PARALLEL_SEARCH",
+        "STATUTORY_REGISTRY",
+        "TRADE_DIRECTORY",
+        "GEMINI_SPECIALIST"
+      ]
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

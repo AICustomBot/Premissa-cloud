@@ -28,6 +28,7 @@ export interface TenantUser {
   organizationId: string;
   organizationName: string;
   role: "OWNER" | "PRODUCER" | "REVIEWER";
+  avatarColor?: string;
   isExternalTenant?: boolean;
 }
 
@@ -248,7 +249,7 @@ export const ProjectWorkspaceBar: React.FC<ProjectWorkspaceBarProps> = ({
   };
 
   return (
-    <div className="bg-slate-50 border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-2">
+    <div className="bg-slate-50 border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-2 print:hidden">
       <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2.5 text-xs">
         {/* Left: Organization & Project Selector */}
         <div className="flex items-center space-x-2.5 flex-wrap gap-y-2">

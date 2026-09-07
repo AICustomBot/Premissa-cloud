@@ -341,6 +341,7 @@ export const RiskBoard: React.FC<RiskBoardProps> = ({
           <Filter className="w-4 h-4 text-slate-400 shrink-0" />
           <span className="text-xs text-slate-600 font-semibold">Filter:</span>
           <button
+            id="filter-all-btn"
             onClick={() => setActiveStatusFilter("ALL")}
             className={`btn-tactile text-xs px-3.5 py-1.5 rounded-lg shrink-0 ${
               activeStatusFilter === "ALL"
@@ -351,10 +352,11 @@ export const RiskBoard: React.FC<RiskBoardProps> = ({
             All ({entities.length})
           </button>
           <button
+            id="filter-action-required-btn"
             onClick={() => setActiveStatusFilter("ACTION_REQUIRED")}
             className={`btn-tactile text-xs px-3.5 py-1.5 rounded-lg shrink-0 flex items-center space-x-1.5 ${
               activeStatusFilter === "ACTION_REQUIRED"
-                ? "bg-gradient-to-b from-amber-500 to-amber-600 text-white border border-amber-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_1px_2px_rgba(15,23,42,0.1)] font-semibold"
+                ? "bg-amber-600 hover:bg-amber-700 text-white border border-amber-700 shadow-xs font-semibold"
                 : "btn-tactile-secondary text-amber-800 font-medium"
             }`}
           >

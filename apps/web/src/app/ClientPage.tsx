@@ -12,6 +12,7 @@ import { ReviewWorkflow } from "../components/ReviewWorkflow";
 import { ClearanceReport } from "../components/ClearanceReport";
 import { OperationsConsole } from "../components/OperationsConsole";
 import { DifferentialClearanceView } from "../components/DifferentialClearanceView";
+import { AuditLedgerView } from "../components/AuditLedgerView";
 import {
   ProjectWorkspaceBar,
   type TenantUser,
@@ -42,10 +43,22 @@ import {
   updateProjectApprovalInFirestore,
   appendAuditLogToFirestore,
   subscribeToProjectEntities,
+  subscribeToProjectAuditLogs,
   syncUserProfileToFirestore,
 } from "../lib/firestore-sync";
+import {
+  type HashChainedAuditEntry,
+  INITIAL_HASH_CHAINED_AUDIT_LOG,
+  createChainedAuditEntry,
+} from "../lib/hash-chained-audit";
+import {
+  type UserPresence,
+  broadcastUserPresence,
+  subscribeToProjectPresence,
+} from "../lib/presence-sync";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { generateUuidV7 } from "@permissa/contracts";
+import type { ReviewerSignOffRecord } from "../lib/cryptographic-report";
 import {
   ShieldAlert,
   Sparkles,
@@ -83,11 +96,17 @@ export default function HomePage() {
     INITIAL_CLEARANCE_ENTITIES,
   );
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
-  const [isRunApproved, setIsRunApproved] = useState<boolean>(
-    currentTab === "differential",
-  );
+  const [isRunApproved, setIsRunApproved] = useState<boolean>(false);
+  const [counselSignOff, setCounselSignOff] =
+    useState<ReviewerSignOffRecord | null>(null);
   const [budgetUsed, setBudgetUsed] = useState<number>(0.42);
   const [notification, setNotification] = useState<string | null>(null);
+
+  // Real-Time Multi-User Presence and Tamper-Evident Hash-Chained Audit Trail (Tranche 6)
+  const [auditEntries, setAuditEntries] = useState<HashChainedAuditEntry[]>(
+    INITIAL_HASH_CHAINED_AUDIT_LOG,
+  );
+  const [activePresences, setActivePresences] = useState<UserPresence[]>([]);
 
   // Cloud Persistence and Auth State
   const [firestoreConnected, setFirestoreConnected] = useState<boolean>(true);
@@ -202,6 +221,61 @@ export default function HomePage() {
     );
     return () => unsub();
   }, [activeProject.id, firebaseAuthUser]);
+
+  // Subscribe to real-time hash-chained audit log entries
+  useEffect(() => {
+    if (!activeProject.id || !firebaseAuthUser) return;
+    const unsub = subscribeToProjectAuditLogs(
+      activeProject.id,
+      (remoteLogs) => {
+        if (remoteLogs && remoteLogs.length > 0) {
+          setAuditEntries(remoteLogs);
+        }
+      },
+    );
+    return () => unsub();
+  }, [activeProject.id, firebaseAuthUser]);
+
+  // Real-time multi-user presence broadcasting and subscription
+  useEffect(() => {
+    if (!activeProject.id) return;
+    const unsub = subscribeToProjectPresence(activeProject.id, (presences) => {
+      setActivePresences(presences);
+    });
+
+    // Broadcast current user presence
+    broadcastUserPresence(
+      activeProject.id,
+      currentUser,
+      currentTab,
+      selectedEntityId,
+    );
+
+    return () => unsub();
+  }, [activeProject.id, currentUser, currentTab, selectedEntityId]);
+
+  // Helper to create and append cryptographically linked audit event
+  const recordChainedAuditEvent = async (
+    action: string,
+    details: Record<string, string | number | boolean>,
+  ) => {
+    try {
+      const newEntry = await createChainedAuditEntry(auditEntries, {
+        id: generateUuidV7(),
+        projectId: activeProject.id,
+        organizationId: activeProject.organizationId,
+        actorId: currentUser.id,
+        actorRole: currentUser.role,
+        actorName: currentUser.name,
+        action,
+        details,
+      });
+      setAuditEntries((prev) => [...prev, newEntry]);
+      await appendAuditLogToFirestore(newEntry);
+    } catch (err) {
+      console.warn("Chained audit logging warning:", err);
+    }
+  };
 
   // Compute deterministic evaluation for each entity using @permissa/policy
   const evaluations: Record<string, EvaluatedClearance> = useMemo(() => {
@@ -327,13 +401,10 @@ export default function HomePage() {
         await deleteEntityInFirestore(activeProject.id, mId);
       }
 
-      await appendAuditLogToFirestore(
-        activeProject.id,
-        activeProject.organizationId,
-        currentUser.id,
-        "ENTITIES_MERGED",
-        generateUuidV7(),
-      );
+      await recordChainedAuditEvent("ENTITIES_MERGED", {
+        survivorEntity: updatedSurvivor.canonicalName,
+        mergedCount: mergedIds.length,
+      });
     } catch (err) {
       console.warn("Firestore entity merge sync error:", err);
     }
@@ -352,13 +423,10 @@ export default function HomePage() {
       await updateEntityInFirestore(activeProject.id, updatedEntity.id, {
         canonicalName: updatedEntity.canonicalName,
       });
-      await appendAuditLogToFirestore(
-        activeProject.id,
-        activeProject.organizationId,
-        currentUser.id,
-        "ENTITY_UPDATED",
-        generateUuidV7(),
-      );
+      await recordChainedAuditEvent("ENTITY_UPDATED", {
+        entityName: updatedEntity.canonicalName,
+        entityId: updatedEntity.id,
+      });
     } catch (err) {
       console.warn("Firestore entity update error:", err);
     }
@@ -373,13 +441,10 @@ export default function HomePage() {
 
     try {
       await saveNewEntityToFirestore(activeProject.id, newEntity);
-      await appendAuditLogToFirestore(
-        activeProject.id,
-        activeProject.organizationId,
-        currentUser.id,
-        "ENTITY_CREATED",
-        generateUuidV7(),
-      );
+      await recordChainedAuditEvent("ENTITY_CREATED", {
+        entityName: newEntity.canonicalName,
+        entityType: newEntity.type,
+      });
     } catch (err) {
       console.warn("Firestore entity creation error:", err);
     }
@@ -408,18 +473,21 @@ export default function HomePage() {
     );
 
     try {
-      await updateEntityInFirestore(activeProject.id, entityId, {
-        initialProposedStatus: newStatus,
-        reviewerNotes: reason,
-      });
-      // Append content-free audit trace
-      await appendAuditLogToFirestore(
+      await updateEntityInFirestore(
         activeProject.id,
-        activeProject.organizationId,
-        currentUser.id,
-        "REVIEWER_OVERRIDE_APPLIED",
-        generateUuidV7(),
+        entityId,
+        {
+          initialProposedStatus: newStatus,
+          reviewerNotes: reason,
+        },
+        "REVIEWER",
       );
+      // Append content-free audit trace
+      await recordChainedAuditEvent("REVIEWER_OVERRIDE_APPLIED", {
+        entityId,
+        newStatus,
+        reasonSummary: reason.slice(0, 80),
+      });
     } catch (err) {
       console.warn("Firestore override update error:", err);
     }
@@ -455,13 +523,11 @@ export default function HomePage() {
         citations,
         initialProposedStatus: admittedStatus,
       });
-      await appendAuditLogToFirestore(
-        activeProject.id,
-        activeProject.organizationId,
-        currentUser.id,
-        "SEARCH_COMPLETED",
-        generateUuidV7(),
-      );
+      await recordChainedAuditEvent("SEARCH_COMPLETED", {
+        entityId,
+        citationsCount: citations.length,
+        admittedStatus,
+      });
     } catch (err) {
       console.warn("Firestore live research sync error:", err);
     }
@@ -471,26 +537,31 @@ export default function HomePage() {
     );
   };
 
-  const handleApproveRun = async () => {
+  const handleApproveRun = async (signOffRecord?: ReviewerSignOffRecord) => {
     setIsRunApproved(true);
+    if (signOffRecord) {
+      setCounselSignOff(signOffRecord);
+    }
     try {
       await updateProjectApprovalInFirestore(
         activeProject.id,
         true,
         activeProject.version,
       );
-      await appendAuditLogToFirestore(
-        activeProject.id,
-        activeProject.organizationId,
-        currentUser.id,
-        "CLEARANCE_RUN_SEALED",
-        generateUuidV7(),
-      );
+      await recordChainedAuditEvent("CLEARANCE_RUN_SEALED", {
+        reviewerName: signOffRecord
+          ? signOffRecord.reviewerName
+          : currentUser.name,
+        jurisdiction: activeProject.jurisdiction,
+        isApproved: true,
+      });
     } catch (err) {
       console.warn("Firestore approval error:", err);
     }
     showNotification(
-      "Clearance run officially approved, sealed, and synced to Firestore.",
+      signOffRecord
+        ? `Clearance run officially approved & sealed by ${signOffRecord.reviewerName}.`
+        : "Clearance run officially approved, sealed, and synced to Firestore.",
     );
   };
 
@@ -561,6 +632,8 @@ export default function HomePage() {
           runStatus={isRunApproved ? "APPROVED" : "PRODUCER_REVIEW"}
           budgetUsedUsd={budgetUsed}
           budgetCapUsd={10.0}
+          activePresences={activePresences}
+          currentUser={currentUser}
         />
 
         {/* Tranche 1: Multi-Tenant Workspace & Project Management Bar */}
@@ -582,9 +655,14 @@ export default function HomePage() {
 
         {/* Floating Toast Notification */}
         {notification && (
-          <div className="fixed bottom-6 right-6 z-50 bg-slate-900 shadow-xl text-white px-4 py-2.5 rounded-xl text-xs flex items-center space-x-2.5 animate-fade-in">
-            <Sparkles className="w-4 h-4 text-cyan-300 shrink-0" />
-            <span className="font-medium">{notification}</span>
+          <div
+            id="app-toast-notification"
+            role="status"
+            aria-live="polite"
+            className="fixed bottom-6 right-6 z-50 bg-slate-900 border border-slate-700/80 shadow-xl text-white px-4 py-3 rounded-xl text-xs flex items-center space-x-2.5 animate-in fade-in slide-in-from-bottom-2"
+          >
+            <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
+            <span className="font-semibold">{notification}</span>
           </div>
         )}
 
@@ -629,7 +707,7 @@ export default function HomePage() {
                   <div>
                     correlationId: &quot;req_iso_01918a22_tenant_gate&quot;
                   </div>
-                  <div>retryable: currentTab === "differential"</div>
+                  <div>retryable: false</div>
                 </div>
               </div>
 
@@ -702,6 +780,8 @@ export default function HomePage() {
                   userRole={userRole}
                   onApproveRun={handleApproveRun}
                   isRunApproved={isRunApproved}
+                  onApplyOverride={handleApplyOverride}
+                  onTriggerNotification={showNotification}
                 />
               )}
 
@@ -710,6 +790,17 @@ export default function HomePage() {
                   entities={entities}
                   evaluations={evaluations}
                   isApproved={isRunApproved}
+                  projectTitle={activeProject.title}
+                  jurisdiction={activeProject.jurisdiction}
+                  signOffRecord={counselSignOff}
+                />
+              )}
+
+              {currentTab === "audit" && (
+                <AuditLedgerView
+                  auditEntries={auditEntries}
+                  projectTitle={activeProject.title}
+                  projectId={activeProject.id}
                 />
               )}
 
@@ -722,7 +813,19 @@ export default function HomePage() {
                 />
               )}
 
-              {currentTab === "roadmap" && <RoadmapView />}
+              {currentTab === "roadmap" && (
+                <RoadmapView
+                  entities={entities}
+                  evaluations={evaluations}
+                  isApproved={isRunApproved}
+                  onApproveRun={handleApproveRun}
+                  onRecordAuditEvent={recordChainedAuditEvent}
+                  onNavigateTab={(tab) => setCurrentTab(tab)}
+                  auditEntries={auditEntries}
+                  activeProject={activeProject}
+                  currentUser={currentUser}
+                />
+              )}
             </>
           )}
         </main>

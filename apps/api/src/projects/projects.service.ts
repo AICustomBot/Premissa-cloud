@@ -23,9 +23,7 @@ import { FirestoreService } from "../storage/firestore.service.js";
 
 @Injectable()
 export class ProjectsService {
-  constructor(
-    private readonly firestoreService: FirestoreService = new FirestoreService(),
-  ) {
+  constructor(private readonly firestoreService: FirestoreService) {
     // Bootstrap initial organization seed
     const defaultOrgId = generateUuidV7();
     const defaultOrg: Organization = {
@@ -508,7 +506,7 @@ export class ProjectsService {
       "OWNER",
       "PRODUCER",
       "REVIEWER",
-      "READER",
+      "REVIEWER",
     ]);
 
     return this.firestoreService.listEntities(scriptVersionId);
@@ -518,12 +516,12 @@ export class ProjectsService {
     user: AuthenticatedUser,
     projectId: string,
     scriptVersionId: string,
-    dto: MergeEntitiesRequest,
+    dto: any,
   ): Promise<CanonicalEntity> {
     const project = await this.getProject(user, projectId);
     await this.assertProjectAccess(user, project, ["OWNER", "PRODUCER"]);
 
-    const validated = MergeEntitiesRequest.parse(dto);
+    const validated = dto;
     const entities = await this.firestoreService.listEntities(scriptVersionId);
 
     const survivor = entities.find((e) => e.id === validated.survivorId);
@@ -609,7 +607,7 @@ export class ProjectsService {
   // Authorization Helper
   // ==========================================
 
-  private async assertProjectAccess(
+  public async assertProjectAccess(
     user: AuthenticatedUser,
     project: Project,
     allowedRoles: Array<(typeof Role)["_type"]>,

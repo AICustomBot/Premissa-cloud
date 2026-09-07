@@ -1,7 +1,23 @@
 import { z } from "zod";
 import { IsoDateTime, Versioned } from "./common";
-import { DeltaChangeType, EntityType, FindingStatus, Jurisdiction, RunState, SourceType, UploadState } from "./enums";
-import { EntityId, FindingId, IdempotencyKey, ProjectId, RunId, SceneId, ScriptVersionId } from "./ids";
+import {
+  DeltaChangeType,
+  EntityType,
+  FindingStatus,
+  Jurisdiction,
+  RunState,
+  SourceType,
+  UploadState,
+} from "./enums";
+import {
+  EntityId,
+  FindingId,
+  IdempotencyKey,
+  ProjectId,
+  RunId,
+  SceneId,
+  ScriptVersionId,
+} from "./ids";
 
 export const CreateUploadRequest = z.object({
   projectId: ProjectId.optional(),
@@ -58,6 +74,8 @@ export const SceneDiff = z.object({
   targetSceneId: SceneId.nullable().optional(),
   addedLinesCount: z.number().int().nonnegative().default(0),
   removedLinesCount: z.number().int().nonnegative().default(0),
+  modifiedLinesCount: z.number().int().nonnegative().default(0).optional(),
+  diffDetails: z.string().max(1000).optional(),
 });
 export type SceneDiff = z.infer<typeof SceneDiff>;
 
@@ -107,7 +125,9 @@ export const CompareScriptVersionsRequest = z.object({
   baseScriptVersionId: ScriptVersionId,
   targetScriptVersionId: ScriptVersionId,
 });
-export type CompareScriptVersionsRequest = z.infer<typeof CompareScriptVersionsRequest>;
+export type CompareScriptVersionsRequest = z.infer<
+  typeof CompareScriptVersionsRequest
+>;
 
 export const DifferentialClearanceRunRequest = z.object({
   projectId: ProjectId,
@@ -118,7 +138,9 @@ export const DifferentialClearanceRunRequest = z.object({
   autoCarryForward: z.boolean().default(true),
   idempotencyKey: IdempotencyKey.optional(),
 });
-export type DifferentialClearanceRunRequest = z.infer<typeof DifferentialClearanceRunRequest>;
+export type DifferentialClearanceRunRequest = z.infer<
+  typeof DifferentialClearanceRunRequest
+>;
 
 export const DifferentialClearanceRunResult = z.object({
   runId: RunId,
@@ -134,7 +156,9 @@ export const DifferentialClearanceRunResult = z.object({
   startedAt: IsoDateTime,
   status: RunState,
 });
-export type DifferentialClearanceRunResult = z.infer<typeof DifferentialClearanceRunResult>;
+export type DifferentialClearanceRunResult = z.infer<
+  typeof DifferentialClearanceRunResult
+>;
 
 export const ScriptDraftHistoryItem = z.object({
   scriptVersionId: ScriptVersionId,
@@ -156,4 +180,6 @@ export const ScriptDraftHistoryResponse = z.object({
   projectId: ProjectId,
   history: z.array(ScriptDraftHistoryItem),
 });
-export type ScriptDraftHistoryResponse = z.infer<typeof ScriptDraftHistoryResponse>;
+export type ScriptDraftHistoryResponse = z.infer<
+  typeof ScriptDraftHistoryResponse
+>;

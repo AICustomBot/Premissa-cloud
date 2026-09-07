@@ -1,0 +1,54 @@
+{
+  "$ref": "#/definitions/ReportSummary",
+  "definitions": {
+    "ReportSummary": {
+      "type": "object",
+      "properties": {
+        "totalEntities": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "clearedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "licenceRequiredCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rewriteRequiredCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blockedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "insufficientEvidenceCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "overallRiskLevel": {
+          "type": "string",
+          "enum": [
+            "CLEAR",
+            "LOW",
+            "ELEVATED",
+            "CRITICAL"
+          ]
+        }
+      },
+      "required": [
+        "totalEntities",
+        "clearedCount",
+        "licenceRequiredCount",
+        "rewriteRequiredCount",
+        "blockedCount",
+        "insufficientEvidenceCount",
+        "overallRiskLevel"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
