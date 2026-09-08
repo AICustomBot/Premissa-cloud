@@ -2,7 +2,5 @@
   "name": "PERMISSA",
   "description": "Evidence-gated screenplay clearance research.",
   "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "majorCapabilities": []
 }
