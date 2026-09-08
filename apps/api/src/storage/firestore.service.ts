@@ -29,6 +29,12 @@ export interface FirestoreConfig {
  * Storage repository interface for durable entity and aggregate persistence.
  * Every read MUST parse through Zod schemas.
  * Every mutable aggregate MUST use a version precondition.
+ *
+ * KNOWN LIMITATION: the authoritative state below is a set of in-process Maps.
+ * Cloud writes are best-effort and most reads never consult the cloud, so
+ * state does not survive a container restart or a scale-to-zero event. Set
+ * PERMISSA_REQUIRE_DURABLE_STORE=true to refuse to start without a cloud
+ * connection instead of silently degrading to memory.
  */
 @Injectable()
 export class FirestoreService {
@@ -48,7 +54,7 @@ export class FirestoreService {
   private readonly entitiesStore = new Map<
     string,
     Map<string, Record<string, unknown>>
-  >(); // projectId -> (entityId -> entity)
+  >(); // scriptVersionId -> (entityId -> entity)
   private readonly auditLogsStore = new Map<
     string,
     Record<string, unknown>[]
@@ -88,18 +94,27 @@ export class FirestoreService {
   constructor() {
     // Attempt lazy cloud Firestore initialization if credentials exist
     try {
+      // No hardcoded fallback. Defaulting to a stale personal project silently
+      // pointed production containers at the wrong database.
       const projectId =
         process.env.FIRESTORE_PROJECT_ID ||
         process.env.GCP_PROJECT ||
-        "elkhedr";
+        process.env.GOOGLE_CLOUD_PROJECT;
       const databaseId = process.env.FIRESTORE_DATABASE_ID || "(default)";
 
-      if (
+      const wantsCloud =
         (process.env.GOOGLE_APPLICATION_CREDENTIALS ||
           process.env.NODE_ENV === "production" ||
           process.env.K_SERVICE) &&
-        !process.env.FIRESTORE_EMULATOR_HOST
-      ) {
+        !process.env.FIRESTORE_EMULATOR_HOST;
+
+      if (wantsCloud && !projectId) {
+        this.logger.error(
+          "Cloud Firestore was requested but no project id is set. Set " +
+            "FIRESTORE_PROJECT_ID, GCP_PROJECT or GOOGLE_CLOUD_PROJECT. " +
+            "Continuing without a durable store.",
+        );
+      } else if (wantsCloud && projectId) {
         // Live cloud mode enabled via service account
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { Firestore } = require("@google-cloud/firestore");
@@ -115,6 +130,23 @@ export class FirestoreService {
       }
     } catch {
       this.logger.log("Fallback to high-fidelity isolated Firestore engine");
+    }
+
+    // Fail fast rather than silently accepting writes that will be lost.
+    if (!this.isCloudConnected) {
+      if (process.env.PERMISSA_REQUIRE_DURABLE_STORE === "true") {
+        throw new Error(
+          "PERMISSA_REQUIRE_DURABLE_STORE=true but no cloud Firestore client " +
+            "could be initialized. Refusing to start with an in-memory store.",
+        );
+      }
+      if (process.env.NODE_ENV === "production") {
+        this.logger.warn(
+          "Running in production WITHOUT a durable store. All state is held in " +
+            "process memory and will be lost when this container restarts or " +
+            "scales to zero. Do not use this for real tenant data.",
+        );
+      }
     }
   }
 
@@ -350,19 +382,35 @@ export class FirestoreService {
   // Entities
   // ==========================================
 
+  /**
+   * The script version ids belonging to a project.
+   *
+   * entitiesStore is keyed by scriptVersionId, so any project-scoped entity
+   * read must resolve the project's script versions first. Without this,
+   * project-scoped lookups degenerate into scans across every tenant.
+   */
+  private entityBucketKeysForProject(projectId: string): string[] {
+    const projectScripts = this.scriptsStore.get(projectId);
+    if (!projectScripts) return [];
+    return Array.from(projectScripts.keys());
+  }
+
   async getEntity(
     projectId: string,
     entityId: string,
   ): Promise<CanonicalEntity | null> {
-    const projectEntities = this.entitiesStore.get(projectId);
-    if (projectEntities) {
-      const raw = projectEntities.get(entityId);
+    // Scoped strictly to this project's script versions. This previously fell
+    // through to a scan of every tenant's entities when the id was not found
+    // locally, which crossed the tenant boundary on a guessable identifier.
+    for (const bucketKey of this.entityBucketKeysForProject(projectId)) {
+      const raw = this.entitiesStore.get(bucketKey)?.get(entityId);
       if (raw) return CanonicalEntity.parse(raw);
     }
-    for (const store of this.entitiesStore.values()) {
-      const raw = store.get(entityId);
-      if (raw) return CanonicalEntity.parse(raw);
-    }
+
+    // Tolerate callers that pass a scriptVersionId, matching listEntities.
+    const direct = this.entitiesStore.get(projectId)?.get(entityId);
+    if (direct) return CanonicalEntity.parse(direct);
+
     return null;
   }
 
@@ -372,15 +420,14 @@ export class FirestoreService {
   ): Promise<void> {
     const validated = CanonicalEntity.parse(entity);
 
-    // Extract projectId from scriptVersionId reference or look up
-    let projectEntities = this.entitiesStore.get(validated.scriptVersionId);
-    if (!projectEntities) {
-      // Find or index by scriptVersionId or projectId
-      projectEntities = new Map();
-      this.entitiesStore.set(validated.scriptVersionId, projectEntities);
+    // Bucketed by scriptVersionId; entities are immutable per script version.
+    let scriptEntities = this.entitiesStore.get(validated.scriptVersionId);
+    if (!scriptEntities) {
+      scriptEntities = new Map();
+      this.entitiesStore.set(validated.scriptVersionId, scriptEntities);
     }
 
-    const existing = projectEntities.get(validated.id);
+    const existing = scriptEntities.get(validated.id);
     if (existing) {
       const parsedExisting = CanonicalEntity.parse(existing);
       if (
@@ -391,37 +438,53 @@ export class FirestoreService {
       }
     }
 
-    projectEntities.set(
+    // Previously absent: entities were never written to the cloud at all, yet
+    // deleteEntity deleted from top-level `entities`. Keep the pair symmetric.
+    if (this.isCloudConnected && this.firestoreClient) {
+      try {
+        await this.firestoreClient
+          .collection("entities")
+          .doc(validated.id)
+          .set(validated);
+      } catch (err: unknown) {
+        this.logger.warn("Cloud write failed; writing to local store");
+      }
+    }
+
+    scriptEntities.set(
       validated.id,
       validated as unknown as Record<string, unknown>,
     );
   }
 
   async listEntities(scriptVersionId: string): Promise<CanonicalEntity[]> {
-    const projectEntities = this.entitiesStore.get(scriptVersionId);
-    if (!projectEntities) return [];
+    const scriptEntities = this.entitiesStore.get(scriptVersionId);
+    if (!scriptEntities) return [];
     const results: CanonicalEntity[] = [];
-    for (const raw of projectEntities.values()) {
+    for (const raw of scriptEntities.values()) {
       results.push(CanonicalEntity.parse(raw));
     }
     return results;
   }
 
   async listCanonicalEntities(projectId: string): Promise<CanonicalEntity[]> {
+    // This previously ignored projectId and returned every entity held by the
+    // process, across all organizations.
     const results: CanonicalEntity[] = [];
-    for (const store of this.entitiesStore.values()) {
-      for (const raw of store.values()) {
-        const entity = CanonicalEntity.parse(raw);
-        results.push(entity);
+    for (const bucketKey of this.entityBucketKeysForProject(projectId)) {
+      const scriptEntities = this.entitiesStore.get(bucketKey);
+      if (!scriptEntities) continue;
+      for (const raw of scriptEntities.values()) {
+        results.push(CanonicalEntity.parse(raw));
       }
     }
     return results;
   }
 
   async deleteEntity(scriptVersionId: string, entityId: string): Promise<void> {
-    const projectEntities = this.entitiesStore.get(scriptVersionId);
-    if (projectEntities) {
-      projectEntities.delete(entityId);
+    const scriptEntities = this.entitiesStore.get(scriptVersionId);
+    if (scriptEntities) {
+      scriptEntities.delete(entityId);
     }
 
     if (this.isCloudConnected && this.firestoreClient) {
