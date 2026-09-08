@@ -2,6 +2,7 @@
   "name": "permissa",
   "private": true,
   "license": "AGPL-3.0-only",
+  "type": "module",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -14,6 +15,7 @@
     "dev": "vite",
     "dev:web": "npm run dev --workspace=apps/web",
     "build": "vite build",
+    "start": "node server.js",
     "preview": "vite preview --port 4173",
     "build:web": "NODE_ENV=production npm run build --workspace=apps/web",
     "lint": "turbo run lint",
