@@ -1,0 +1,115 @@
+{
+  "$ref": "#/definitions/ScriptDraftHistoryResponse",
+  "definitions": {
+    "ScriptDraftHistoryResponse": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "scriptVersionId": {
+                "$ref": "#/definitions/ScriptDraftHistoryResponse/properties/projectId"
+              },
+              "versionNumber": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "checksumSha256": {
+                "type": "string",
+                "minLength": 64,
+                "maxLength": 64
+              },
+              "pageCount": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "sceneCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sourceType": {
+                "type": "string",
+                "enum": [
+                  "PDF",
+                  "FDX"
+                ]
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "entitiesCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "runsCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "latestRunState": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "CREATED",
+                      "QUEUED",
+                      "PREFLIGHT",
+                      "RUNNING",
+                      "PAUSED_FAILURE",
+                      "PAUSED_BUDGET",
+                      "CANCELLED_PARTIAL",
+                      "DRAFT_READY",
+                      "PRODUCER_REVIEW",
+                      "CHANGES_REQUESTED",
+                      "PROFESSIONAL_REVIEW",
+                      "APPROVED"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "clearanceReportId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "certificateSealSha256": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "scriptVersionId",
+              "versionNumber",
+              "checksumSha256",
+              "pageCount",
+              "sceneCount",
+              "sourceType",
+              "createdAt",
+              "entitiesCount",
+              "runsCount"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "projectId",
+        "history"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

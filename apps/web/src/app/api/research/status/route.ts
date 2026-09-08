@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { isParallelConfigured } from "../../../../lib/parallel-service";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   return NextResponse.json({
     provider: "Parallel Web Systems",

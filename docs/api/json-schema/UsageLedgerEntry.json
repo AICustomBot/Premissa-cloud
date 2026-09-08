@@ -1,0 +1,71 @@
+{
+  "$ref": "#/definitions/UsageLedgerEntry",
+  "definitions": {
+    "UsageLedgerEntry": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "runId": {
+          "$ref": "#/definitions/UsageLedgerEntry/properties/id"
+        },
+        "organizationId": {
+          "$ref": "#/definitions/UsageLedgerEntry/properties/id"
+        },
+        "projectId": {
+          "$ref": "#/definitions/UsageLedgerEntry/properties/id"
+        },
+        "provider": {
+          "type": "string",
+          "enum": [
+            "PARALLEL_SEARCH",
+            "STATUTORY_REGISTRY",
+            "TRADE_DIRECTORY",
+            "GEMINI_SPECIALIST"
+          ]
+        },
+        "callType": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "latencyMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "costUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unitsUsed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "budgetRemainingUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "runId",
+        "organizationId",
+        "projectId",
+        "provider",
+        "callType",
+        "latencyMs",
+        "costUsd",
+        "unitsUsed",
+        "budgetRemainingUsd",
+        "timestamp"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

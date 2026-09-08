@@ -52,6 +52,10 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
   const [parallelLatency, setParallelLatency] = useState<number | null>(null);
   const [isCheckingParallel, setIsCheckingParallel] = useState<boolean>(false);
 
+  const [grafanaConfigured, setGrafanaConfigured] = useState<boolean>(false);
+  const [grafanaLatency, setGrafanaLatency] = useState<number | null>(null);
+  const [grafanaStatus, setGrafanaStatus] = useState<string>("STANDBY");
+
   // Kill Switch & Safety State
   const [isKillSwitchActive, setIsKillSwitchActive] = useState<boolean>(false);
   const [rateLimitPerEntity, setRateLimitPerEntity] = useState<number>(3);
@@ -112,22 +116,34 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
     },
   ]);
 
-  // Check Parallel API health status on mount
+  // Check Parallel API and Grafana health status on mount
   useEffect(() => {
-    checkParallelHealth();
+    checkProvidersHealth();
   }, []);
 
-  const checkParallelHealth = async () => {
+  const checkProvidersHealth = async () => {
     setIsCheckingParallel(true);
-    const start = Date.now();
+    const startParallel = Date.now();
     try {
       const res = await fetch("/api/research/status");
       const data = await res.json();
       setParallelConfigured(Boolean(data.configured));
-      setParallelLatency(Date.now() - start);
+      setParallelLatency(Date.now() - startParallel);
     } catch {
       setParallelConfigured(false);
       setParallelLatency(null);
+    }
+
+    try {
+      const grafanaRes = await fetch("/api/ops/grafana");
+      const grafanaData = await grafanaRes.json();
+      setGrafanaConfigured(Boolean(grafanaData.configured));
+      setGrafanaLatency(grafanaData.latencyMs);
+      setGrafanaStatus(grafanaData.status);
+    } catch {
+      setGrafanaConfigured(false);
+      setGrafanaLatency(null);
+      setGrafanaStatus("STANDBY");
     } finally {
       setIsCheckingParallel(false);
     }
@@ -203,7 +219,7 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
 
           <div className="flex items-center space-x-3 shrink-0">
             <button
-              onClick={checkParallelHealth}
+              onClick={checkProvidersHealth}
               disabled={isCheckingParallel}
               className="flex items-center space-x-2 px-3.5 py-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-medium text-slate-700 transition-all shadow-2xs"
             >
@@ -216,7 +232,7 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
         </div>
 
         {/* Live Service Status Cards */}
-        <div className="mt-6 pt-5 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="mt-6 pt-5 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {/* Parallel Web Systems */}
           <div className="card-stat-tile p-4 bg-white flex items-start space-x-3">
             <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-200 shrink-0">
@@ -243,7 +259,38 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
               <span className="text-[10px] text-slate-500 font-mono block mt-1 font-medium">
                 {parallelLatency !== null
                   ? `${parallelLatency}ms round-trip`
-                  : "Standby (Key optional in demo)"}
+                  : "Standby (Key optional)"}
+              </span>
+            </div>
+          </div>
+
+          {/* Grafana Cloud MCP */}
+          <div className="card-stat-tile p-4 bg-white flex items-start space-x-3">
+            <div className="p-2 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+              <Activity className="w-4 h-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-900">
+                  Grafana MCP
+                </span>
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold border ${
+                    grafanaConfigured && grafanaStatus === "ONLINE"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : "bg-amber-50 text-amber-800 border-amber-200"
+                  }`}
+                >
+                  {grafanaConfigured ? grafanaStatus : "STANDBY"}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5 truncate font-mono">
+                OpenTelemetry &bull; MCP
+              </p>
+              <span className="text-[10px] text-slate-500 font-mono block mt-1 font-medium">
+                {grafanaLatency !== null
+                  ? `${grafanaLatency}ms telemetry`
+                  : "Audit fallback active"}
               </span>
             </div>
           </div>

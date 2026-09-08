@@ -1,0 +1,262 @@
+{
+  "$ref": "#/definitions/ScriptDelta",
+  "definitions": {
+    "ScriptDelta": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "baseScriptVersionId": {
+          "$ref": "#/definitions/ScriptDelta/properties/projectId"
+        },
+        "targetScriptVersionId": {
+          "$ref": "#/definitions/ScriptDelta/properties/projectId"
+        },
+        "baseChecksumSha256": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "targetChecksumSha256": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "sceneDiffs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sceneNumber": {
+                "type": "string"
+              },
+              "heading": {
+                "type": "string"
+              },
+              "changeType": {
+                "type": "string",
+                "enum": [
+                  "ADDED",
+                  "MODIFIED",
+                  "DELETED",
+                  "UNTOUCHED"
+                ]
+              },
+              "baseSceneId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/ScriptDelta/properties/projectId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "targetSceneId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/ScriptDelta/properties/projectId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "addedLinesCount": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "removedLinesCount": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "modifiedLinesCount": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "diffDetails": {
+                "type": "string",
+                "maxLength": 1000
+              }
+            },
+            "required": [
+              "heading",
+              "changeType"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "entityDeltas": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "entityId": {
+                "$ref": "#/definitions/ScriptDelta/properties/projectId"
+              },
+              "canonicalName": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "PERSON_CHARACTER",
+                  "BRAND_BUSINESS_PRODUCT",
+                  "PRODUCTION_TITLE"
+                ]
+              },
+              "changeType": {
+                "$ref": "#/definitions/ScriptDelta/properties/sceneDiffs/items/properties/changeType"
+              },
+              "baseEntityId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/ScriptDelta/properties/projectId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "targetEntityId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/ScriptDelta/properties/projectId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "previousFindingId": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/ScriptDelta/properties/projectId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "previousStatus": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "RESEARCH_CLEARED",
+                      "NEEDS_LICENCE",
+                      "NEEDS_REWRITE",
+                      "BLOCKED",
+                      "INSUFFICIENT_EVIDENCE"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "requiresResearch": {
+                "type": "boolean"
+              },
+              "carryForwardAllowed": {
+                "type": "boolean"
+              },
+              "diffDetails": {
+                "type": "string",
+                "maxLength": 1000
+              }
+            },
+            "required": [
+              "entityId",
+              "canonicalName",
+              "type",
+              "changeType",
+              "requiresResearch",
+              "carryForwardAllowed"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "summary": {
+          "type": "object",
+          "properties": {
+            "totalBaseEntities": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "totalTargetEntities": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "addedEntitiesCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "modifiedEntitiesCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "deletedEntitiesCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "untouchedEntitiesCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "carriedForwardFindingsCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "researchRequiredCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "estimatedCostSavingsUsd": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "totalBaseEntities",
+            "totalTargetEntities",
+            "addedEntitiesCount",
+            "modifiedEntitiesCount",
+            "deletedEntitiesCount",
+            "untouchedEntitiesCount",
+            "carriedForwardFindingsCount",
+            "researchRequiredCount",
+            "estimatedCostSavingsUsd"
+          ],
+          "additionalProperties": false
+        },
+        "computedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "projectId",
+        "baseScriptVersionId",
+        "targetScriptVersionId",
+        "baseChecksumSha256",
+        "targetChecksumSha256",
+        "sceneDiffs",
+        "entityDeltas",
+        "summary",
+        "computedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

@@ -46,6 +46,9 @@
         "sceneCount": {
           "type": "integer",
           "minimum": 0
+        },
+        "rawText": {
+          "type": "string"
         }
       },
       "required": [
