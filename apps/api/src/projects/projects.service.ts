@@ -6,12 +6,10 @@ import {
 import {
   AuditLogEntry,
   CanonicalEntity,
-  ConfirmEntitiesRequest,
   CreateProjectRequest,
   generateUuidV7,
   MergeEntitiesRequest,
   Organization,
-  PatchEntityRequest,
   Project,
   ProjectGrant,
   Role,
@@ -23,18 +21,7 @@ import { FirestoreService } from "../storage/firestore.service.js";
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly firestoreService: FirestoreService) {
-    // Bootstrap initial organization seed
-    const defaultOrgId = generateUuidV7();
-    const defaultOrg: Organization = {
-      id: defaultOrgId,
-      name: "Apex Pictures Entertainment",
-      ownerId: "user-owner-1",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    void this.firestoreService.saveOrganization(defaultOrg);
-  }
+  constructor(private readonly firestoreService: FirestoreService) {}
 
   async getPrimaryOrgIdForUser(user: AuthenticatedUser): Promise<string> {
     if (user.organizationId) {
@@ -141,18 +128,23 @@ export class ProjectsService {
     const allProjects = await this.firestoreService.listProjects();
     const allowedProjects: Project[] = [];
 
+    // Resolve organization ownership once rather than once per project.
+    const ownedOrgIds = new Set(
+      (await this.firestoreService.listOrganizations())
+        .filter((org) => org.ownerId === user.uid)
+        .map((org) => org.id),
+    );
+
     for (const project of allProjects) {
       if (project.deletedAt !== null) continue;
 
-      // Check grants or org ownership
-      const grants = await this.firestoreService.getGrants(project.id);
-      const hasGrant = grants.some((g) => g.userId === user.uid);
-      const org = await this.firestoreService.getOrganization(
-        project.organizationId,
-      );
-      const isOrgOwner = org?.ownerId === user.uid;
+      if (ownedOrgIds.has(project.organizationId)) {
+        allowedProjects.push(project);
+        continue;
+      }
 
-      if (hasGrant || isOrgOwner) {
+      const grants = await this.firestoreService.getGrants(project.id);
+      if (grants.some((g) => g.userId === user.uid)) {
         allowedProjects.push(project);
       }
     }
@@ -506,7 +498,6 @@ export class ProjectsService {
       "OWNER",
       "PRODUCER",
       "REVIEWER",
-      "REVIEWER",
     ]);
 
     return this.firestoreService.listEntities(scriptVersionId);
@@ -516,12 +507,14 @@ export class ProjectsService {
     user: AuthenticatedUser,
     projectId: string,
     scriptVersionId: string,
-    dto: any,
+    dto: unknown,
   ): Promise<CanonicalEntity> {
     const project = await this.getProject(user, projectId);
     await this.assertProjectAccess(user, project, ["OWNER", "PRODUCER"]);
 
-    const validated = dto;
+    // Validate at the boundary. This previously did `const validated = dto`
+    // with `dto: any`, so unvalidated client input reached the merge logic.
+    const validated = MergeEntitiesRequest.parse(dto);
     const entities = await this.firestoreService.listEntities(scriptVersionId);
 
     const survivor = entities.find((e) => e.id === validated.survivorId);
@@ -529,7 +522,10 @@ export class ProjectsService {
       throw new ForbiddenException("SURVIVOR_NOT_FOUND");
     }
 
-    const expectedSurvivorVersion = validated.expectedVersions[survivor.id];
+    const expectedVersions: Record<string, number> =
+      validated.expectedVersions ?? {};
+
+    const expectedSurvivorVersion = expectedVersions[survivor.id];
     if (
       expectedSurvivorVersion !== undefined &&
       survivor.version !== expectedSurvivorVersion
@@ -544,7 +540,7 @@ export class ProjectsService {
       if (!mEntity) {
         throw new ForbiddenException("MERGED_ENTITY_NOT_FOUND");
       }
-      const expVer = validated.expectedVersions[mergedId];
+      const expVer = expectedVersions[mergedId];
       if (expVer !== undefined && mEntity.version !== expVer) {
         throw new PreconditionFailedException("VERSION_CONFLICT");
       }

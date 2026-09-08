@@ -22,7 +22,11 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+      # STOPGAP: `npm ci` requires package-lock.json, which this repository has
+      # never contained, so every CI run failed on its first step. Generate a
+      # lockfile locally with `npm install`, commit it, and restore `npm ci` --
+      # that is what makes CI reproducible. See docs/AI-STUDIO-PUBLISHING.md.
+      - run: npm install --no-audit --no-fund
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run contracts:check
@@ -50,7 +54,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - run: npm ci
+      - run: npm install --no-audit --no-fund
       - name: Install Firebase CLI
         run: npm install --global firebase-tools@13
       - name: Run rules tests against the Firestore emulator
