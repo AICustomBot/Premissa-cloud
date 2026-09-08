@@ -158,8 +158,8 @@ const server = createServer((req, res) => {
 })
 
 server.listen(PORT, HOST, () => {
-	console.log(`PERMISSA console listening on http://${HOST}:${PORT}`)
-	console.log(`Serving ${DIST_DIR}`)
+	console.log("PERMISSA console listening on " + HOST + ":" + PORT)
+	console.log("Serving " + DIST_DIR)
 })
 
 for (const signal of ["SIGTERM", "SIGINT"]) {
