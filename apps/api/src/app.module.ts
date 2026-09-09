@@ -4,6 +4,7 @@ import { HealthController } from "./health/health.controller.js";
 import { AuthModule } from "./auth/auth.module.js";
 import { StorageModule } from "./storage/storage.module.js";
 import { ProjectsModule } from "./projects/projects.module.js";
+import { RunsModule } from "./runs/runs.module.js";
 import { ResearchModule } from "./research/research.module.js";
 import { ReviewsModule } from "./reviews/reviews.module.js";
 import { DifferentialModule } from "./differential/differential.module.js";
@@ -18,6 +19,7 @@ import { DifferentialModule } from "./differential/differential.module.js";
     StorageModule,
     AuthModule,
     ProjectsModule,
+    RunsModule,
     ResearchModule,
     ReviewsModule,
     DifferentialModule,
