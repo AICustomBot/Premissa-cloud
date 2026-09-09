@@ -1,16 +1,24 @@
-name: Deploy
+name: Deploy API
 
-# Option A topology:
-#   Operator console -> published by Google AI Studio (static, no secrets)
+# Option A API topology:
+#   Operator console -> Google AI Studio (static, no secrets)
 #   API              -> this workflow, Cloud Run, us-central1
-#   Firestore rules  -> this workflow, database premissadb
+#   Firestore        -> separate manual deploy-firestore.yml workflow
 #
-# Every credential is attached as a Secret Manager reference. A literal env
-# value would be copied into Cloud Audit Logs, which cannot be redacted.
+# Firestore is intentionally not deployed here. A rules/index failure must
+# never obscure or roll back a healthy API revision.
 
 on:
   push:
     branches: [main]
+    paths:
+      - "apps/api/**"
+      - "packages/contracts/**"
+      - "packages/policy/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.base.json"
+      - "cloudbuild.api.yaml"
   workflow_dispatch:
 
 permissions:
@@ -18,7 +26,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: deploy-production
+  group: deploy-api-production
   cancel-in-progress: false
 
 env:
@@ -53,9 +61,6 @@ jobs:
             exit 1
           fi
 
-      # `gcloud builds submit --tag` requires a Dockerfile at the root of the
-      # build context. Ours lives at apps/api/Dockerfile while the context must
-      # remain the repository root, so the build is expressed as a config.
       - name: Build and push API image
         run: |
           gcloud builds submit \
@@ -69,11 +74,6 @@ jobs:
 
       - name: Deploy API revision
         run: |
-          # Cloud Run IAM authentication cannot be satisfied by a browser.
-          # Disable that edge check without adding an allUsers IAM binding;
-          # Firebase bearer-token authorization remains enforced in the API.
-          # ^;^ switches the env delimiter so comma-bearing origin lists remain
-          # one variable rather than being split by gcloud.
           gcloud run deploy "$API_SERVICE" \
             --project "${{ secrets.GCP_PROJECT_ID }}" \
             --image "$IMAGE_API" \
@@ -87,16 +87,6 @@ jobs:
             --set-secrets "GEMINI_API_KEY=gemini-api-key:latest,PARALLEL_API_KEY=parallel-api-key:latest"
         env:
           IMAGE_API: ${{ secrets.ARTIFACT_REGISTRY }}/api:${{ github.sha }}
-
-      - name: Install Firebase CLI
-        run: npm install --global firebase-tools@13
-
-      - name: Deploy Firestore rules and indexes
-        run: |
-          firebase deploy \
-            --only firestore:rules,firestore:indexes \
-            --project "${{ secrets.GCP_PROJECT_ID }}" \
-            --non-interactive
 
       - name: Assert no plaintext secrets on the service spec
         run: |

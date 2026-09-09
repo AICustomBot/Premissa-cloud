@@ -1,0 +1,104 @@
+name: Deploy Firestore
+
+# Manual-only by design. Firestore policy changes are reviewed and deployed
+# independently from the Cloud Run API so one cannot roll back the other.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_database:
+        description: "Type premissadb to confirm the target"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-firestore-premissadb
+  cancel-in-progress: false
+
+env:
+  GCP_REGION: us-central1
+  FIRESTORE_DATABASE_ID: premissadb
+
+jobs:
+  deploy-firestore:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Validate explicit target
+        run: |
+          if [ "${{ inputs.confirm_database }}" != "$FIRESTORE_DATABASE_ID" ]; then
+            echo "Confirmation must be exactly: $FIRESTORE_DATABASE_ID" >&2
+            exit 1
+          fi
+          [ -n "${{ secrets.GCP_PROJECT_ID }}" ] || {
+            echo "Missing GCP_PROJECT_ID" >&2
+            exit 1
+          }
+
+      - name: Verify database identity and location
+        run: |
+          LOCATION="$(gcloud firestore databases describe \
+            --database "$FIRESTORE_DATABASE_ID" \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --format 'value(locationId)')"
+          case "$LOCATION" in
+            us-central1|nam5) ;;
+            *)
+              echo "Unexpected immutable Firestore location: $LOCATION" >&2
+              echo "Expected us-central1 or nam5 before production data exists." >&2
+              exit 1
+              ;;
+          esac
+          echo "database=$FIRESTORE_DATABASE_ID" >> "$GITHUB_STEP_SUMMARY"
+          echo "location=$LOCATION" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install pinned Firebase CLI
+        run: |
+          npm install --global firebase-tools@15.29.0
+          firebase --version
+
+      - name: Deploy rules and indexes to premissadb
+        id: firebase-deploy
+        shell: bash
+        run: |
+          set +e
+          firebase deploy \
+            --only "firestore:$FIRESTORE_DATABASE_ID" \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --non-interactive \
+            --debug 2>&1 | tee firebase-deploy.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ] && [ -f firebase-debug.log ]; then
+            echo "----- firebase-debug.log -----"
+            cat firebase-debug.log
+          fi
+          exit "$status"
+
+      - name: Preserve Firebase diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firebase-deploy-logs-${{ github.run_id }}
+          path: |
+            firebase-deploy.log
+            firebase-debug.log
+          if-no-files-found: ignore
+
+      - name: Record release evidence
+        if: success()
+        run: echo "firestore_database=$FIRESTORE_DATABASE_ID" >> "$GITHUB_STEP_SUMMARY"
