@@ -32,10 +32,12 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+      # No `cache: npm` here. setup-node exits non-zero when it cannot find a
+      # lockfile, and this repository has none yet. This job only uses npm to
+      # install firebase-tools globally, so caching bought nothing anyway.
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
       - id: auth
         uses: google-github-actions/auth@v2
         with:

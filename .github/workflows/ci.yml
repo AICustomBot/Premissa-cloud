@@ -18,10 +18,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      # `cache: npm` is deliberately absent: setup-node fails the job outright
+      # when no lockfile exists. Add it back together with package-lock.json.
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
       # STOPGAP: `npm ci` requires package-lock.json, which this repository has
       # never contained, so every CI run failed on its first step. Generate a
       # lockfile locally with `npm install`, commit it, and restore `npm ci` --
@@ -49,7 +50,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
