@@ -4,6 +4,7 @@ name: Deploy Console
 #   Operator console -> this workflow, Cloud Run, us-central1, no secrets
 #   API              -> deploy.yml, Cloud Run, us-central1
 #   Firestore        -> deploy-firestore.yml, manual only
+#   Web dashboard    -> deploy-web.yml, Cloud Run, us-central1, no secrets
 #
 # The console was previously going to be published from Google AI Studio. That
 # surface injects and pins managed app-level environment values that cannot be
@@ -43,6 +44,7 @@ env:
   GCP_REGION: us-central1
   API_SERVICE: permissa-api
   CONSOLE_SERVICE: permissa-console
+  WEB_SERVICE: permissa-web
 
 jobs:
   deploy-console:
@@ -129,6 +131,21 @@ jobs:
           echo "base_url=$URL/v1" >> "$GITHUB_OUTPUT"
           echo "Resolved API base URL: $URL/v1"
 
+      # The console hands signed-in sessions to the dashboard. The dashboard
+      # may not be deployed yet; in that case the Open Dashboard button stays
+      # hidden until it is and this workflow runs again.
+      - name: Resolve dashboard URL when deployed
+        id: web
+        run: |
+          URL="$(gcloud run services describe "$WEB_SERVICE" \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --region "$GCP_REGION" \
+            --format 'value(status.url)' 2>/dev/null || true)"
+          if [ -z "$URL" ]; then
+            echo "::notice::$WEB_SERVICE is not deployed yet; the Open Dashboard button stays hidden until it is deployed and this workflow runs again."
+          fi
+          echo "dashboard_url=$URL" >> "$GITHUB_OUTPUT"
+
       - name: Build and push console image
         run: |
           gcloud builds submit \
@@ -156,11 +173,12 @@ jobs:
             --max-instances 3 \
             --min-instances 0 \
             --clear-secrets \
-            --set-env-vars "^;^PERMISSA_API_BASE_URL=${API_BASE_URL};PERMISSA_FIREBASE_WEB_CONFIG=${FIREBASE_WEB_CONFIG}"
+            --set-env-vars "^;^PERMISSA_API_BASE_URL=${API_BASE_URL};PERMISSA_FIREBASE_WEB_CONFIG=${FIREBASE_WEB_CONFIG};PERMISSA_DASHBOARD_URL=${DASHBOARD_URL}"
         env:
           IMAGE_CONSOLE: ${{ secrets.ARTIFACT_REGISTRY }}/console:${{ github.sha }}
           API_BASE_URL: ${{ steps.api.outputs.base_url }}
           FIREBASE_WEB_CONFIG: ${{ steps.fbconfig.outputs.config }}
+          DASHBOARD_URL: ${{ steps.web.outputs.dashboard_url }}
 
       - name: Assert the console carries no secrets
         run: |
@@ -208,6 +226,7 @@ jobs:
           {
             echo "console_url=$URL"
             echo "api_base_url=${{ steps.api.outputs.base_url }}"
+            echo "dashboard_url=${{ steps.web.outputs.dashboard_url || '(not deployed)' }}"
             echo "firebase_project=$(jq -r '.firebase.projectId' console-config.json)"
             echo "revision=${{ github.sha }}"
           } >> "$GITHUB_STEP_SUMMARY"
