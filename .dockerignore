@@ -1,0 +1,30 @@
+# Keeps local state and build artefacts out of the docker build context for
+# every image in this repo (api, console, web). Cloud Build already omits
+# anything matched by .gitignore when it uploads the source, so this is the
+# second line of defence for local `docker build` runs.
+.git
+.github
+node_modules
+**/node_modules
+
+# Build output is always produced inside the image, never imported from the
+# host: a stale local build must not be able to ship.
+dist
+**/dist
+.next
+**/.next
+apps/web/out
+
+# Local environment files. .env.example is intentionally not excluded, since
+# it holds no values.
+.env
+.env.*
+!.env.example
+
+# Local noise.
+*.log
+.DS_Store
+coverage
+**/coverage
+playwright-report
+test-results

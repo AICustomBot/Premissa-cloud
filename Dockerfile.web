@@ -1,63 +1,59 @@
-# syntax=docker/dockerfile:1
-
-# PERMISSA web dashboard image (apps/web, Next.js).
+# Dashboard image: the apps/web Next.js app for the permissa-web Cloud Run
+# service. The console has its own Dockerfile.console; the two services are
+# built and deployed independently so neither can roll the other back.
 #
-# Mirrors the console topology deliberately: built by Cloud Build, run on
-# Cloud Run, and carrying no credentials of any kind. The Firebase web config
-# and the API origin arrive at runtime through the /api/config route handler
-# (PERMISSA_* environment variables), not at build time, so nothing
-# credential-shaped is baked into the client bundle.
-#
-# Monorepo build: apps/web imports the workspace packages @permissa/contracts
-# and @permissa/policy, so the build context is the repository root and those
-# packages are compiled before the Next.js build.
-
+# The whole repository is copied into the build stage deliberately. This is an
+# npm workspace root with a committed lockfile, and the lockfile describes
+# every workspace in the repo. Copying only apps/web plus the two packages it
+# imports leaves the install resolving manifests for directories that are not
+# in the build context, which fails rather than pruning. A slightly larger
+# build context is worth far more than a fragile install.
 FROM node:20-slim AS build
 WORKDIR /app
-
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# package*.json is a glob deliberately: this repository has no committed root
-# lockfile yet (P0-2 tracks it), and the glob picks one up automatically once
-# it lands.
-COPY package*.json tsconfig.base.json ./
-COPY packages/contracts ./packages/contracts
-COPY packages/policy ./packages/policy
-COPY apps/web ./apps/web
+COPY . .
 
-# npm install rather than npm ci: no committed lockfile. Same choice as
-# Dockerfile.console and apps/api/Dockerfile.
+# install, not ci: the lockfile is new and the workspace graph is still
+# settling. Switch to `npm ci` once P0-2 is closed and the lockfile is known
+# to be in sync, so builds become reproducible.
 RUN npm install --no-audit --no-fund
 
-# Workspace libraries must be built before Next.js: their package.json entry
-# points resolve to dist/, and policy depends on the contracts build.
-RUN npm run build --workspace=@permissa/contracts
-RUN npm run build --workspace=@permissa/policy
-RUN npm run build --workspace=@permissa/web
+# The dashboard imports the shared contracts and policy packages, which are
+# consumed as built output rather than source, so they are built first.
+RUN npm run build --workspace=@permissa/contracts \
+ && npm run build --workspace=@permissa/policy \
+ && npm run build --workspace=@permissa/web
 
-# With experimental.outputFileTracingRoot set to the repository root, the
-# standalone server lands at apps/web/server.js inside the output.
+# apps/web/next.config.mjs sets output: "standalone" with the monorepo tracing
+# root, so the server lands at apps/web/.next/standalone/apps/web/server.js.
+# Asserting it exists turns a silent config regression into a failed build
+# instead of a container that exits immediately on Cloud Run.
 RUN test -f apps/web/.next/standalone/apps/web/server.js \
- || (echo "next build did not produce the standalone server" >&2 && exit 1)
+ || (echo "next build did not produce the standalone server at apps/web/.next/standalone/apps/web/server.js" >&2 && exit 1)
 
-# Last line of defence for the no-secrets-in-client-bundles rule, same pattern
-# as Dockerfile.console: a Google API key, a PEM, or a provider token literal
-# in the client assets fails the build instead of reaching a public URL.
+# The dashboard receives its Firebase web config at runtime from /api/config,
+# so no credential-shaped value should ever be baked into the client bundle.
+# This is the same gate the console image applies.
 RUN if grep -rIlE '(AIza[0-9A-Za-z_-]{30,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|(PARALLEL|GRAFANA|GEMINI)_[A-Z_]*(KEY|TOKEN)"?[:=][^,}]{12,})' apps/web/.next/static; then \
-      echo "A credential-shaped value is present in the client bundle." >&2; \
+      echo "A credential-shaped value is present in the client bundle. Runtime configuration must be served from /api/config, never compiled in." >&2; \
       exit 1; \
     fi
 
+# Runtime stage. Only the standalone server and static assets cross over, so
+# the repository, the lockfile, and every devDependency stay in the build
+# stage.
 FROM node:20-slim
-ENV NODE_ENV=production
-ENV PORT=8080
-ENV HOSTNAME=0.0.0.0
-ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production \
+    PORT=8080 \
+    HOSTNAME=0.0.0.0 \
+    NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
+
+# Runs unprivileged: nothing in the dashboard needs root, and Cloud Run does
+# not require it.
 RUN useradd --uid 10001 --create-home permissa
 
-# The standalone output already contains the traced node_modules it needs;
-# .next/static is not traced and must be copied beside the server.
 COPY --from=build --chown=permissa:permissa /app/apps/web/.next/standalone ./
 COPY --from=build --chown=permissa:permissa /app/apps/web/.next/static ./apps/web/.next/static
 
