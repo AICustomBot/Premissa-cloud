@@ -1,7 +1,7 @@
 name: Deploy API
 
 # Option A API topology:
-#   Operator console -> Google AI Studio (static, no secrets)
+#   Operator console -> Cloud Run (static bundle, no secrets)
 #   API              -> this workflow, Cloud Run, us-central1
 #   Firestore        -> separate manual deploy-firestore.yml workflow
 #
@@ -19,6 +19,7 @@ on:
       - "package-lock.json"
       - "tsconfig.base.json"
       - "cloudbuild.api.yaml"
+      - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
 permissions:
@@ -72,6 +73,9 @@ jobs:
         env:
           IMAGE_API: ${{ secrets.ARTIFACT_REGISTRY }}/api:${{ github.sha }}
 
+      # GOOGLE_CLOUD_PROJECT is set explicitly: Cloud Run does not provide it,
+      # and Firebase Admin needs a project id to validate an ID token's
+      # audience. Without it every genuine token is rejected as AUTH_REQUIRED.
       - name: Deploy API revision
         run: |
           gcloud run deploy "$API_SERVICE" \
@@ -83,7 +87,7 @@ jobs:
             --timeout 300 \
             --max-instances 3 \
             --min-instances 0 \
-            --set-env-vars "^;^NODE_ENV=production;PERMISSA_ALLOW_DEV_TOKENS=false;PERMISSA_REQUIRE_DURABLE_STORE=true;FIRESTORE_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }};FIRESTORE_DATABASE_ID=$FIRESTORE_DATABASE_ID;GCP_REGION=$GCP_REGION;VERTEX_LOCATION=$GCP_REGION;PERMISSA_ALLOWED_ORIGINS=${{ vars.CONSOLE_ORIGIN }};GEMINI_ENABLED=true;PARALLEL_ENABLED=true;GRAFANA_MCP_ENABLED=false;RUN_ENTITY_CAP=50;RUN_PARALLEL_CALL_CAP=50;ENTITY_PARALLEL_CALL_CAP=3;RUN_DEADLINE_SECONDS=600;RUN_COST_CAP_USD=10.00;AGGREGATE_PREDEMO_CAP_USD=80;MAX_CONCURRENT_RUNS=1;USER_DAILY_RUN_LIMIT=3;GLOBAL_DAILY_RUN_LIMIT=25" \
+            --set-env-vars "^;^NODE_ENV=production;PERMISSA_ALLOW_DEV_TOKENS=false;PERMISSA_REQUIRE_DURABLE_STORE=true;GOOGLE_CLOUD_PROJECT=${{ secrets.GCP_PROJECT_ID }};FIREBASE_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }};FIRESTORE_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }};FIRESTORE_DATABASE_ID=$FIRESTORE_DATABASE_ID;GCP_REGION=$GCP_REGION;VERTEX_LOCATION=$GCP_REGION;PERMISSA_ALLOWED_ORIGINS=${{ vars.CONSOLE_ORIGIN }};GEMINI_ENABLED=true;PARALLEL_ENABLED=true;GRAFANA_MCP_ENABLED=false;RUN_ENTITY_CAP=50;RUN_PARALLEL_CALL_CAP=50;ENTITY_PARALLEL_CALL_CAP=3;RUN_DEADLINE_SECONDS=600;RUN_COST_CAP_USD=10.00;AGGREGATE_PREDEMO_CAP_USD=80;MAX_CONCURRENT_RUNS=1;USER_DAILY_RUN_LIMIT=3;GLOBAL_DAILY_RUN_LIMIT=25" \
             --set-secrets "GEMINI_API_KEY=gemini-api-key:latest,PARALLEL_API_KEY=parallel-api-key:latest"
         env:
           IMAGE_API: ${{ secrets.ARTIFACT_REGISTRY }}/api:${{ github.sha }}

@@ -49,15 +49,60 @@ export class AuthService {
     return process.env.NODE_ENV !== "production";
   }
 
+  /**
+   * The Google Cloud project whose Firebase Auth tokens this API accepts.
+   *
+   * verifyIdToken validates a token's `aud` and `iss` claims against this
+   * value, so without it every genuine token is rejected. Cloud Run does not
+   * populate GOOGLE_CLOUD_PROJECT (unlike Cloud Functions and App Engine), so
+   * the project id is resolved from the deployment environment rather than
+   * left to library discovery.
+   */
+  private static resolveProjectId(): string | undefined {
+    const candidates = [
+      process.env.FIREBASE_PROJECT_ID,
+      process.env.GOOGLE_CLOUD_PROJECT,
+      process.env.GCLOUD_PROJECT,
+      process.env.FIRESTORE_PROJECT_ID,
+      process.env.GCP_PROJECT,
+    ];
+
+    for (const candidate of candidates) {
+      const trimmed = candidate?.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+
+    return undefined;
+  }
+
   private initFirebase(): void {
     if (admin.apps.length > 0) {
       this.initialized = true;
       return;
     }
 
+    const projectId = AuthService.resolveProjectId();
+
+    if (!projectId) {
+      this.logger.error(
+        "No Firebase project id could be resolved. Set FIREBASE_PROJECT_ID or " +
+          "GOOGLE_CLOUD_PROJECT. Token verification will fail until it is set.",
+      );
+    }
+
     try {
-      admin.initializeApp();
+      // Application Default Credentials come from the Cloud Run runtime
+      // service account. No key material is read from the environment, which
+      // is why FIREBASE_PRIVATE_KEY does not and must not exist here.
+      admin.initializeApp(projectId ? { projectId } : undefined);
       this.initialized = true;
+      this.logger.log(
+        `Firebase Admin initialized for project ${
+          projectId ?? "(discovered by the credential chain)"
+        }.`,
+      );
     } catch (err: unknown) {
       this.initialized = false;
       this.logger.error(
@@ -104,7 +149,17 @@ export class AuthService {
         organizationId: (decoded.orgId as string) || undefined,
         defaultRole: (decoded.role as DefaultRole) || "PRODUCER",
       };
-    } catch {
+    } catch (err: unknown) {
+      // Say why the token was refused. This previously swallowed the reason
+      // entirely, so a misconfigured project id was indistinguishable from an
+      // expired or forged token. The token is never logged: only the error
+      // code and message, which name the cause without leaking a credential.
+      const code = (err as { code?: string } | null)?.code;
+      this.logger.warn(
+        `Rejected bearer token${code ? ` [${code}]` : ""}: ${
+          err instanceof Error ? err.message : "unknown verification error"
+        }`,
+      );
       throw new UnauthorizedException("AUTH_REQUIRED");
     }
   }
