@@ -23,9 +23,11 @@
     "test": "turbo run test",
     "contracts:generate": "npm run generate --workspace=@permissa/contracts",
     "contracts:check": "npm run check --workspace=@permissa/contracts",
+    "claims:set": "node scripts/set-claims.mjs",
     "e2e": "npm run e2e --workspace=apps/web"
   },
   "dependencies": {
+    "firebase": "^11.3.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
