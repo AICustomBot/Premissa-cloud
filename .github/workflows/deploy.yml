@@ -56,12 +56,17 @@ jobs:
             exit 1
           fi
 
+      # `gcloud builds submit --tag` requires a Dockerfile at the root of the
+      # build context. Ours lives at apps/api/Dockerfile while the context must
+      # remain the repository root, so the build is expressed as a config.
       - name: Build and push API image
         run: |
           gcloud builds submit \
             --project "${{ secrets.GCP_PROJECT_ID }}" \
-            --tag "$IMAGE_API" \
-            --file apps/api/Dockerfile .
+            --region "$GCP_REGION" \
+            --config cloudbuild.api.yaml \
+            --substitutions "_IMAGE=$IMAGE_API" \
+            .
         env:
           IMAGE_API: ${{ secrets.ARTIFACT_REGISTRY }}/api:${{ github.sha }}
 

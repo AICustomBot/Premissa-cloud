@@ -1,0 +1,29 @@
+# Build config for the PERMISSA API image.
+#
+# `gcloud builds submit --tag` only works when the Dockerfile sits at the root
+# of the build context. This repository keeps it at apps/api/Dockerfile while
+# the context must stay at the repository root, because the image build needs
+# packages/contracts and packages/policy. An explicit docker build step is the
+# only way to express both.
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: build
+    args:
+      - build
+      - --file
+      - apps/api/Dockerfile
+      - --tag
+      - ${_IMAGE}
+      - .
+
+images:
+  - ${_IMAGE}
+
+options:
+  # A fresh project has no default Cloud Build logs bucket. Without this,
+  # the build fails on log delivery rather than on anything to do with code.
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+
+timeout: 1200s
