@@ -78,10 +78,20 @@ export async function GET() {
     process.env.PERMISSA_FIREBASE_WEB_CONFIG,
   );
 
+  // The login surface's origin. Needed so signing out can return there, and
+  // so a signed-out visitor can be pointed at somewhere useful. An origin is
+  // not a credential, but it is still served from here rather than inlined:
+  // the build's secret gate is only meaningful if nothing
+  // configuration-shaped is compiled into the bundle.
+  const consoleUrl = (process.env.PERMISSA_CONSOLE_URL ?? "")
+    .trim()
+    .replace(/\/$/, "");
+
   return NextResponse.json(
     {
       apiBaseUrl,
       firebase: config,
+      consoleUrl: consoleUrl || null,
       configError: error,
     },
     {

@@ -28,6 +28,14 @@ export type WebConfig = {
   apiBaseUrl: string;
   /** Null when sign-in cannot be offered. */
   firebase: FirebaseWebConfig | null;
+  /**
+   * Origin of the console, which owns sign-in and sign-up. Null when this
+   * service was deployed without PERMISSA_CONSOLE_URL, in which case sign-out
+   * can still end the session but has nowhere to send the operator.
+   *
+   * Optional so a caller may build a WebConfig without it.
+   */
+  consoleUrl?: string | null;
   /** Why sign-in is unavailable, if it is. */
   configError: string | null;
 };
@@ -87,6 +95,9 @@ export async function loadWebConfig(): Promise<WebConfig> {
   let firebase = coerceFirebaseConfig(
     parseJsonEnv(process.env.NEXT_PUBLIC_FIREBASE_WEB_CONFIG),
   );
+  let consoleUrl = stripTrailingSlash(
+    (process.env.NEXT_PUBLIC_CONSOLE_URL ?? "").trim(),
+  );
   let configError: string | null = null;
 
   try {
@@ -98,10 +109,14 @@ export async function loadWebConfig(): Promise<WebConfig> {
       const body = (await response.json()) as {
         apiBaseUrl?: unknown;
         firebase?: unknown;
+        consoleUrl?: unknown;
         configError?: unknown;
       };
       if (typeof body.apiBaseUrl === "string" && body.apiBaseUrl.trim()) {
         apiBaseUrl = stripTrailingSlash(body.apiBaseUrl.trim());
+      }
+      if (typeof body.consoleUrl === "string" && body.consoleUrl.trim()) {
+        consoleUrl = stripTrailingSlash(body.consoleUrl.trim());
       }
       const runtimeFirebase = coerceFirebaseConfig(body.firebase);
       if (runtimeFirebase) {
@@ -129,5 +144,5 @@ export async function loadWebConfig(): Promise<WebConfig> {
       "The PERMISSA API base URL is not configured, so no data can be loaded.";
   }
 
-  return { apiBaseUrl, firebase, configError };
+  return { apiBaseUrl, firebase, consoleUrl: consoleUrl || null, configError };
 }

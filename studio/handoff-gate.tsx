@@ -10,8 +10,14 @@
  * working as a diagnostic surface: append `?stay=1` to the console URL and no
  * forwarding happens, leaving the health check, identity panel and project
  * listing available for debugging a deployment.
+ *
+ * `?signedout=1` is the other escape hatch, and the dashboard's sign-out
+ * depends on it. The two services are separate origins with separate Firebase
+ * apps, so a dashboard sign-out leaves this session untouched -- and this gate
+ * would forward it straight back, making sign-out look broken. That parameter
+ * clears this session first.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { User } from "firebase/auth";
 import { App } from "./App.js";
 import type { ConsoleConfig } from "./config.js";
@@ -19,6 +25,7 @@ import {
   getIdToken,
   initAuth,
   needsEmailVerification,
+  signOutOfConsole,
   watchAuthState,
 } from "./firebase.js";
 import { buildHandoffUrl, requestHandoff } from "./handoff.js";
@@ -29,6 +36,8 @@ type Status =
   | { kind: "failed"; message: string };
 
 const STAY_PARAM = "stay";
+
+const SIGNED_OUT_PARAM = "signedout";
 
 const styles = {
   overlay: {
@@ -58,20 +67,48 @@ const styles = {
   },
 };
 
-function stayRequested(): boolean {
+function hasParam(name: string): boolean {
   if (typeof window === "undefined") {
     return false;
   }
-  return new URLSearchParams(window.location.search).has(STAY_PARAM);
+  return new URLSearchParams(window.location.search).has(name);
+}
+
+function stayRequested(): boolean {
+  return hasParam(STAY_PARAM);
+}
+
+/**
+ * Remove the parameter once it has been acted on, so a reload or a later
+ * sign-in is an ordinary visit rather than another sign-out.
+ */
+function stripSignedOutParam(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const url = new URL(window.location.href);
+  url.searchParams.delete(SIGNED_OUT_PARAM);
+  window.history.replaceState(
+    {},
+    "",
+    `${url.pathname}${url.search}${url.hash}`,
+  );
 }
 
 export function HandoffGate({ config }: { config: ConsoleConfig }) {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
+  // Set from the URL on the first render, before any forwarding can start.
+  const [clearingSession, setClearingSession] = useState(() =>
+    hasParam(SIGNED_OUT_PARAM),
+  );
+
   // watchAuthState also fires on every token refresh. Without this guard a
   // refresh an hour into a session would mint a second handoff and navigate
   // away from whatever the operator was doing.
-  const attemptedUid = useRef<string | null>(null);
+  const attemptedUid = useState<{ current: string | null }>(() => ({
+    current: null,
+  }))[0];
 
   const forward = useCallback(async (user: User): Promise<void> => {
     const idToken = await getIdToken(user);
@@ -89,8 +126,44 @@ export function HandoffGate({ config }: { config: ConsoleConfig }) {
     window.location.replace(target);
   }, []);
 
+  // Runs before the forwarding effect can subscribe, because that effect is
+  // gated on clearingSession.
   useEffect(() => {
-    if (!config.firebase || stayRequested()) {
+    if (!clearingSession) {
+      return;
+    }
+
+    const firebase = config.firebase;
+    if (!firebase) {
+      stripSignedOutParam();
+      setClearingSession(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const instance = await initAuth(firebase);
+        await signOutOfConsole(instance);
+      } catch {
+        // Nothing to clear, or Firebase is unreachable. Either way the
+        // operator is not signed in here, which is the desired end state.
+      } finally {
+        if (!cancelled) {
+          stripSignedOutParam();
+          setClearingSession(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clearingSession, config.firebase]);
+
+  useEffect(() => {
+    if (!config.firebase || stayRequested() || clearingSession) {
       return;
     }
 
@@ -141,7 +214,11 @@ export function HandoffGate({ config }: { config: ConsoleConfig }) {
       cancelled = true;
       unsubscribe?.();
     };
-  }, [config.firebase, forward]);
+  }, [config.firebase, clearingSession, forward, attemptedUid]);
+
+  if (clearingSession) {
+    return <div style={styles.overlay}>Signing out…</div>;
+  }
 
   if (status.kind === "forwarding") {
     return <div style={styles.overlay}>Signing in to PERMISSA…</div>;
