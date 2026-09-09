@@ -24,6 +24,12 @@ options:
   # A fresh project has no default Cloud Build logs bucket. Without this,
   # the build fails on log delivery rather than on anything to do with code.
   logging: CLOUD_LOGGING_ONLY
-  machineType: E2_HIGHCPU_8
 
-timeout: 1200s
+  # Deliberately no machineType. High-CPU types such as E2_HIGHCPU_8 have no
+  # default quota, and a new project rejects the submission with
+  # FAILED_PRECONDITION before any build record is created. The default
+  # machine type always has quota.
+
+# Generous because this image installs and compiles three workspaces with no
+# dependency cache.
+timeout: 1800s
