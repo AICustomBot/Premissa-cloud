@@ -1,14 +1,24 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import firebaseConfig from "../src/lib/firebase-applet-config.json";
-import { db, auth, googleProvider } from "../src/lib/firebase";
+import {
+  initWebServices,
+  db,
+  auth,
+  googleProvider,
+} from "../src/lib/firebase";
 import { INITIAL_CLEARANCE_ENTITIES } from "../src/data/golden-data";
 
 describe("Batch 1: Firestore & Authentication Verification", () => {
+  // The module no longer initialises at import time: the client bundle must
+  // not carry the config (Dockerfile.web secret gate). Tests initialise
+  // explicitly from the checked-in local config instead.
+  beforeAll(() => {
+    initWebServices(firebaseConfig);
+  });
+
   it("verifies Firebase configuration targets the designated Firestore database", () => {
     expect(firebaseConfig.projectId).toBe("aicustombot");
-    expect(firebaseConfig.firestoreDatabaseId).toBe(
-      "ai-studio-permissa-c6dfc351-5d1e-4392-902d-ec4b5d09ea49",
-    );
+    expect(firebaseConfig.firestoreDatabaseId).toBe("premissadb");
     expect(firebaseConfig.apiKey).toBeTruthy();
     expect(firebaseConfig.authDomain).toBe("aicustombot.firebaseapp.com");
   });

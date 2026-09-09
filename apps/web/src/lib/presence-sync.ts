@@ -6,7 +6,7 @@ import {
   onSnapshot,
   serverTimestamp,
 } from "firebase/firestore";
-import { db, auth } from "./firebase";
+import { db, currentUser } from "./firebase";
 import type { TenantUser } from "../components/ProjectWorkspaceBar";
 
 export interface UserPresence {
@@ -30,7 +30,7 @@ export async function broadcastUserPresence(
   activeTab: string,
   selectedEntityId?: string | null,
 ): Promise<void> {
-  if (!auth.currentUser) {
+  if (!currentUser()) {
     return;
   }
   try {
@@ -64,7 +64,7 @@ export async function removeUserPresence(
   projectId: string,
   userId: string,
 ): Promise<void> {
-  if (!auth.currentUser) {
+  if (!currentUser()) {
     return;
   }
   try {
@@ -82,7 +82,7 @@ export function subscribeToProjectPresence(
   projectId: string,
   onPresenceUpdate: (users: UserPresence[]) => void,
 ) {
-  if (!auth.currentUser) {
+  if (!currentUser()) {
     return () => {};
   }
 

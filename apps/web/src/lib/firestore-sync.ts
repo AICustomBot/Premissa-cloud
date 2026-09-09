@@ -1,6 +1,7 @@
 import {
   db,
   auth,
+  currentUser,
   OperationType,
   handleFirestoreError,
   testFirestoreConnection,
@@ -41,7 +42,7 @@ export async function ensureOrganizationInFirestore(
   orgName: string,
   ownerId: string,
 ): Promise<void> {
-  if (!auth.currentUser) return;
+  if (!currentUser()) return;
   const orgPath = `organizations/${orgId}`;
   try {
     const orgRef = doc(db, "organizations", orgId);
@@ -69,7 +70,7 @@ export async function syncProjectToFirestore(
   entities: ClearanceItem[],
   user: TenantUser,
 ): Promise<void> {
-  if (!auth.currentUser) {
+  if (!currentUser()) {
     return;
   }
   const projectPath = `projects/${project.id}`;
@@ -78,7 +79,7 @@ export async function syncProjectToFirestore(
     await ensureOrganizationInFirestore(
       project.organizationId,
       user.organizationName || "Apex Pictures Entertainment",
-      auth.currentUser.uid,
+      auth.currentUser!.uid,
     );
 
     const projectRef = doc(db, "projects", project.id);
@@ -92,7 +93,7 @@ export async function syncProjectToFirestore(
         organizationId: project.organizationId,
         title: project.title,
         jurisdiction: "US",
-        createdBy: auth.currentUser.uid,
+        createdBy: auth.currentUser!.uid,
         version: 1,
         isRunApproved: false,
         budgetUsed: 0,
@@ -138,7 +139,7 @@ export async function updateEntityInFirestore(
   updates: Partial<ClearanceItem>,
   role: "PRODUCER" | "REVIEWER" = "PRODUCER",
 ): Promise<void> {
-  if (!auth.currentUser) {
+  if (!currentUser()) {
     return;
   }
   const entityPath = `projects/${projectId}/entities/${entityId}`;
@@ -190,7 +191,7 @@ export async function deleteEntityInFirestore(
   projectId: string,
   entityId: string,
 ): Promise<void> {
-  if (!auth.currentUser) {
+  if (!currentUser()) {
     return;
   }
   const entityPath = `projects/${projectId}/entities/${entityId}`;
@@ -209,7 +210,7 @@ export async function saveNewEntityToFirestore(
   projectId: string,
   entity: ClearanceItem,
 ): Promise<void> {
-  if (!auth.currentUser) {
+  if (!currentUser()) {
     return;
   }
   const entityPath = `projects/${projectId}/entities/${entity.id}`;
@@ -240,7 +241,7 @@ export async function updateProjectApprovalInFirestore(
   isRunApproved: boolean,
   currentVersion: number,
 ): Promise<void> {
-  if (!auth.currentUser) {
+  if (!currentUser()) {
     return;
   }
   const projectPath = `projects/${projectId}`;
@@ -264,7 +265,7 @@ import type { HashChainedAuditEntry } from "./hash-chained-audit";
 export async function appendAuditLogToFirestore(
   entry: HashChainedAuditEntry,
 ): Promise<void> {
-  if (!auth.currentUser) {
+  if (!currentUser()) {
     return;
   }
   const logPath = `projects/${entry.projectId}/auditLogs/${entry.id}`;
@@ -295,7 +296,7 @@ export function subscribeToProjectAuditLogs(
   projectId: string,
   onLogsChange: (entries: HashChainedAuditEntry[]) => void,
 ) {
-  if (!auth.currentUser) {
+  if (!currentUser()) {
     return () => {};
   }
   const logsRef = collection(db, "projects", projectId, "auditLogs");
@@ -328,7 +329,7 @@ export function subscribeToProjectEntities(
   onEntitiesChange: (entities: Partial<ClearanceItem>[]) => void,
   onError?: (err: Error) => void,
 ) {
-  if (!auth.currentUser) {
+  if (!currentUser()) {
     return () => {};
   }
   const collectionPath = `projects/${projectId}/entities`;
@@ -362,16 +363,17 @@ export function subscribeToProjectEntities(
 export async function syncUserProfileToFirestore(
   user: TenantUser,
 ): Promise<void> {
-  if (!auth.currentUser) {
+  const signedIn = currentUser();
+  if (!signedIn) {
     return;
   }
-  const userPath = `users/${auth.currentUser.uid}`;
+  const userPath = `users/${signedIn.uid}`;
   try {
-    const userRef = doc(db, "users", auth.currentUser.uid);
+    const userRef = doc(db, "users", signedIn.uid);
     const snap = await getDoc(userRef);
     if (!snap.exists()) {
       await setDoc(userRef, {
-        id: auth.currentUser.uid,
+        id: signedIn.uid,
         name: user.name,
         email: user.email,
         role: user.role,
