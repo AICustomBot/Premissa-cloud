@@ -8,7 +8,12 @@ name: Deploy Console
 # The console was previously going to be published from Google AI Studio. That
 # surface injects and pins managed app-level environment values that cannot be
 # removed, which conflicts with AGENTS.md: the console must carry no secrets.
-# It needs exactly one public value, so it is deployed here instead.
+# It is deployed here instead.
+#
+# The console does receive its public Firebase web config. That is a client
+# identifier shipped to every browser by design, not a credential: access is
+# controlled by Firebase authorised domains, API key referrer restrictions, and
+# server-side token verification.
 #
 # Path filters keep this independent of the API. A console change must never
 # rebuild, replace, or roll back a healthy permissa-api revision.
@@ -64,6 +69,48 @@ jobs:
             exit 1
           fi
 
+      # Validated before anything is built. A malformed config would otherwise
+      # deploy a console whose sign-in button fails in the browser.
+      - name: Validate the Firebase web config
+        id: fbconfig
+        env:
+          FIREBASE_WEB_CONFIG: ${{ vars.FIREBASE_WEB_CONFIG }}
+        run: |
+          if [ -z "$FIREBASE_WEB_CONFIG" ]; then
+            echo "The FIREBASE_WEB_CONFIG repository variable is not set." >&2
+            echo "It must hold the public Firebase web config JSON: apiKey, authDomain, projectId, appId." >&2
+            exit 1
+          fi
+
+          # Only public fields survive, and the result is single-line so it can
+          # be passed safely as an environment value.
+          COMPACT="$(printf '%s' "$FIREBASE_WEB_CONFIG" | jq -c '{apiKey, authDomain, projectId, appId, messagingSenderId} | with_entries(select(.value != null))')" || {
+            echo "FIREBASE_WEB_CONFIG is not valid JSON." >&2
+            exit 1
+          }
+
+          printf '%s' "$COMPACT" | jq -e 'has("apiKey") and has("authDomain") and has("projectId") and has("appId")' > /dev/null || {
+            echo "FIREBASE_WEB_CONFIG must contain apiKey, authDomain, projectId and appId." >&2
+            exit 1
+          }
+
+          # A semicolon is the delimiter of the ^;^ env string below, so one
+          # inside the value would silently split into bogus variables.
+          case "$COMPACT" in
+            *";"*)
+              echo "FIREBASE_WEB_CONFIG must not contain a semicolon." >&2
+              exit 1
+              ;;
+          esac
+
+          if printf '%s' "$COMPACT" | grep -q 'PRIVATE KEY'; then
+            echo "FIREBASE_WEB_CONFIG contains private key material. It must hold only public client fields." >&2
+            exit 1
+          fi
+
+          echo "config=$COMPACT" >> "$GITHUB_OUTPUT"
+          echo "Firebase project: $(printf '%s' "$COMPACT" | jq -r .projectId)"
+
       # Resolved from the live service rather than a hand-copied literal, so
       # the console can never be built against a stale or wrong API origin.
       - name: Resolve API base URL from the deployed service
@@ -93,6 +140,9 @@ jobs:
         env:
           IMAGE_CONSOLE: ${{ secrets.ARTIFACT_REGISTRY }}/console:${{ github.sha }}
 
+      # The Firebase config and API origin are passed through job env vars
+      # rather than interpolated into the command: the JSON contains double
+      # quotes, which would otherwise break shell parsing.
       - name: Deploy console revision
         run: |
           gcloud run deploy "$CONSOLE_SERVICE" \
@@ -105,9 +155,12 @@ jobs:
             --timeout 60 \
             --max-instances 3 \
             --min-instances 0 \
-            --clear-secrets
+            --clear-secrets \
+            --set-env-vars "^;^PERMISSA_API_BASE_URL=${API_BASE_URL};PERMISSA_FIREBASE_WEB_CONFIG=${FIREBASE_WEB_CONFIG}"
         env:
           IMAGE_CONSOLE: ${{ secrets.ARTIFACT_REGISTRY }}/console:${{ github.sha }}
+          API_BASE_URL: ${{ steps.api.outputs.base_url }}
+          FIREBASE_WEB_CONFIG: ${{ steps.fbconfig.outputs.config }}
 
       - name: Assert the console carries no secrets
         run: |
@@ -115,13 +168,25 @@ jobs:
             --project "${{ secrets.GCP_PROJECT_ID }}" \
             --region "$GCP_REGION" \
             --format 'yaml(spec.template.spec.containers[0].env)' > console-env.yaml
-          if grep -Eiq '(API_KEY|TOKEN|SECRET|PASSWORD|PRIVATE_KEY)' console-env.yaml; then
-            echo "The console service spec references a credential. It must hold none." >&2
-            cat console-env.yaml >&2
+
+          # No PEM material anywhere on the spec, including inside the public
+          # config value.
+          if grep -q 'BEGIN .*PRIVATE KEY' console-env.yaml; then
+            echo "The console service spec contains private key material." >&2
             exit 1
           fi
 
-      - name: Verify console and report CORS state
+          # The public Firebase web config is excluded by name: it is shipped to
+          # every browser by design. Every other variable is still checked for
+          # credential-shaped naming.
+          grep -v 'PERMISSA_FIREBASE_WEB_CONFIG' console-env.yaml > console-env-checked.yaml || true
+          if grep -Eiq '(API_KEY|TOKEN|SECRET|PASSWORD|PRIVATE_KEY)' console-env-checked.yaml; then
+            echo "The console service spec references a credential. It must hold none." >&2
+            cat console-env-checked.yaml >&2
+            exit 1
+          fi
+
+      - name: Verify console and report configuration state
         run: |
           URL="$(gcloud run services describe "$CONSOLE_SERVICE" \
             --project "${{ secrets.GCP_PROJECT_ID }}" \
@@ -129,11 +194,27 @@ jobs:
             --format 'value(status.url)')"
           curl --fail --silent --show-error --max-time 30 "$URL/_healthz" > /dev/null
           curl --fail --silent --show-error --max-time 30 "$URL/" > /dev/null
+
+          # Proves the runtime config endpoint is serving a usable config, so a
+          # missing or malformed value fails the deploy instead of surfacing as
+          # a dead sign-in button.
+          curl --fail --silent --show-error --max-time 30 "$URL/__/config.json" > console-config.json
+          jq -e '.firebase.apiKey and .firebase.authDomain and .firebase.projectId and .firebase.appId' console-config.json > /dev/null || {
+            echo "The console is serving an incomplete runtime config:" >&2
+            jq '.configError' console-config.json >&2
+            exit 1
+          }
+
           {
             echo "console_url=$URL"
             echo "api_base_url=${{ steps.api.outputs.base_url }}"
+            echo "firebase_project=$(jq -r '.firebase.projectId' console-config.json)"
             echo "revision=${{ github.sha }}"
           } >> "$GITHUB_STEP_SUMMARY"
+
+          HOST="${URL#https://}"
+          echo "::notice::Google sign-in requires '$HOST' to be listed under Firebase Authentication > Settings > Authorised domains."
+
           if [ "${{ vars.CONSOLE_ORIGIN }}" != "$URL" ]; then
             echo "::warning::CONSOLE_ORIGIN is '${{ vars.CONSOLE_ORIGIN }}' but the console origin is '$URL'. Browser calls will fail CORS until CONSOLE_ORIGIN is set to that value and Deploy API is run once."
           fi
