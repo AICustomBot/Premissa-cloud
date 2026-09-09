@@ -1,7 +1,6 @@
 import {
+  applyAdmissionOverlay,
   evaluateEvidenceGate,
-  computeConfidence,
-  type ConfidenceInput,
   type ConfidenceOutput,
   type GateDecision,
   type ProposedStatus,
@@ -17,16 +16,24 @@ export interface EvaluatedClearance {
   confidence: ConfidenceOutput;
   reasonCodes: string[];
   professionalConfirmationRequired: boolean;
+  /**
+   * Set when the admission overlay changed the gate's status for this caller,
+   * so the UI can say the conclusion is withheld pending professional review
+   * rather than presenting the downgraded status as the gate's own finding.
+   */
+  withheldStatus?: ProposedStatus | null;
   isOverriddenByReviewer?: boolean;
   reviewerOverrideStatus?: ProposedStatus;
 }
 
 /**
- * Deterministically evaluates an entity's clearance status using @permissa/policy.
- * Hard rule from AGENTS.md:
- * - No model-assigned clearance status or confidence score.
- * - No Research-cleared without a passing evidence gate and confidence >= 85.
- * - No final Blocked outside professional review.
+ * Deterministically evaluates an entity's clearance status using
+ * @permissa/policy.
+ *
+ * Both the evidence gate and the admission overlay live in the policy package:
+ * AGENTS.md permits no status decision outside it. This function only adapts
+ * the entity record into the gate's input shape and passes the caller's role
+ * through -- it makes no clearance judgement of its own.
  */
 export function evaluateEntityClearance(
   entity: ClearanceItem,
@@ -42,38 +49,28 @@ export function evaluateEntityClearance(
   };
 
   const decision: GateDecision = evaluateEvidenceGate(gateInput);
-
-  let admittedStatus: ProposedStatus = decision.admittedStatus;
-
-  // Hard Constitutional Rule: No final Blocked outside professional review!
-  if (admittedStatus === "BLOCKED" && !isProfessionalReviewer) {
-    admittedStatus = "NEEDS_REWRITE";
-  }
-
-  // Hard Constitutional Rule: No Research-cleared without confidence >= 85
-  if (
-    admittedStatus === "RESEARCH_CLEARED" &&
-    decision.confidence.finalScore < 85
-  ) {
-    admittedStatus = "INSUFFICIENT_EVIDENCE";
-  }
+  const admission = applyAdmissionOverlay(decision, {
+    isProfessionalReviewer,
+  });
 
   return {
     entityId: entity.id,
     canonicalName: entity.canonicalName,
     type: entity.type,
     proposedStatus: entity.initialProposedStatus,
-    admittedStatus,
+    admittedStatus: admission.admittedStatus,
     confidence: decision.confidence,
-    reasonCodes: decision.reasonCodes,
+    reasonCodes: admission.reasonCodes,
     professionalConfirmationRequired: decision.professionalConfirmationRequired,
+    withheldStatus: admission.downgradedFrom,
   };
 }
 
 /**
  * Content-Free Audit Logger as mandated by AGENTS.md:
- * "No screenplay text, entity names, queries, evidence excerpts, reviewer comments,
- * or raw provider payloads in logs, traces, metrics, or error responses."
+ * "No screenplay text, entity names, queries, evidence excerpts, reviewer
+ * comments, or raw provider payloads in logs, traces, metrics, or error
+ * responses."
  */
 export function logContentFreeEvent(
   eventType: string,
