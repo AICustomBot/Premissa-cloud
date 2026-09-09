@@ -1,8 +1,8 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { App } from "./App.js";
 import { configureApi } from "./api.js";
 import { loadConsoleConfig } from "./config.js";
+import { HandoffGate } from "./handoff-gate.js";
 
 const container = document.getElementById("root");
 if (!container) {
@@ -14,12 +14,16 @@ const root = createRoot(container);
 // Configuration is fetched before the first render: Firebase cannot be
 // initialised without it, and rendering a sign-in button that is not yet wired
 // up would be worse than a brief blank frame.
+//
+// HandoffGate wraps App: this surface is the product's sign-in page, so a
+// session established here is forwarded to the dashboard service. The console
+// itself stays reachable with ?stay=1 for diagnostics.
 loadConsoleConfig()
   .then((config) => {
     configureApi(config.apiBaseUrl);
     root.render(
       <React.StrictMode>
-        <App config={config} />
+        <HandoffGate config={config} />
       </React.StrictMode>,
     );
   })
