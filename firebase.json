@@ -1,8 +1,11 @@
 {
-  "firestore": {
-    "rules": "firestore.rules",
-    "indexes": "infra/firestore/firestore.indexes.json"
-  },
+  "firestore": [
+    {
+      "database": "premissadb",
+      "rules": "firestore.rules",
+      "indexes": "infra/firestore/firestore.indexes.json"
+    }
+  ],
   "emulators": {
     "auth": {
       "port": 9099
