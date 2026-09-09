@@ -30,11 +30,13 @@ import {
   type EvaluatedClearance,
 } from "../lib/clearance-engine";
 import {
-  auth,
+  initWebServices,
   testFirestoreConnection,
   signInWithGoogle,
   signOutUser,
+  type WebFirebaseConfig,
 } from "../lib/firebase";
+import { consumeHandoffToken, getStoredHandoff } from "../lib/handoff";
 import {
   syncProjectToFirestore,
   updateEntityInFirestore,
@@ -114,6 +116,7 @@ export default function HomePage() {
     currentTab === "differential",
   );
   const [firebaseAuthUser, setFirebaseAuthUser] = useState<User | null>(null);
+  const [firebaseReady, setFirebaseReady] = useState<boolean>(false);
 
   // Sync user role with currentUser when selected
   const handleSelectUser = (user: TenantUser) => {
@@ -128,42 +131,101 @@ export default function HomePage() {
     );
   };
 
-  // Google Authentication Listener
+  // Console handoff + lazy Firebase bootstrap.
+  //
+  // The Firebase web config arrives at runtime from GET /config.json; nothing
+  // is baked into the bundle (the Dockerfile.web secret gate forbids it).
+  // Without a config the dashboard keeps running on its golden fixture in
+  // demo mode. A console handoff token in the URL fragment establishes the
+  // signed-in identity for this tab; the API verifies the token server-side
+  // on every call.
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      setFirebaseAuthUser(user);
-      if (user) {
-        const isOwnerAdmin =
-          user.email === "ehabkhedrfathy@gmail.com" ||
-          user.email?.includes("apex");
-        const tenantUser: TenantUser = {
-          id: user.uid,
-          name:
-            user.displayName ||
-            user.email?.split("@")[0] ||
-            "Authenticated User",
-          email: user.email || "",
-          organizationId: "org-apex-01",
-          organizationName: "Apex Pictures Entertainment",
-          role: isOwnerAdmin ? "OWNER" : "PRODUCER",
-        };
-        setCurrentUser(tenantUser);
-        setUserRole(isOwnerAdmin ? "PRODUCER" : "PRODUCER");
-        try {
-          await syncUserProfileToFirestore(tenantUser);
-        } catch (err) {
-          console.warn("User profile sync deferred:", err);
+    const handoff = consumeHandoffToken() ?? getStoredHandoff();
+    if (handoff) {
+      setCurrentUser({
+        id: handoff.uid,
+        name: handoff.name ?? handoff.email?.split("@")[0] ?? "Console user",
+        email: handoff.email ?? "",
+        organizationId: handoff.organizationId ?? "org-apex-01",
+        organizationName: "Apex Pictures Entertainment",
+        role:
+          handoff.role === "OWNER"
+            ? "OWNER"
+            : handoff.role === "REVIEWER"
+              ? "REVIEWER"
+              : "PRODUCER",
+      });
+      showNotification(
+        `Signed in via PERMISSA Console as ${handoff.email ?? handoff.uid}.`,
+      );
+    }
+
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+
+    fetch("/config.json", {
+      cache: "no-store",
+      headers: { accept: "application/json" },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((config) => {
+        if (cancelled || !config?.firebase) {
+          return;
         }
-        showNotification(`Signed in as ${user.email} (Tenant: Apex Pictures)`);
-      }
-    });
-    return () => unsub();
+        const services = initWebServices(
+          config.firebase as WebFirebaseConfig,
+        );
+        setFirebaseReady(true);
+        unsubscribe = onAuthStateChanged(services.auth, async (user) => {
+          setFirebaseAuthUser(user);
+          if (user) {
+            const isOwnerAdmin =
+              user.email === "ehabkhedrfathy@gmail.com" ||
+              user.email?.includes("apex");
+            const tenantUser: TenantUser = {
+              id: user.uid,
+              name:
+                user.displayName ||
+                user.email?.split("@")[0] ||
+                "Authenticated User",
+              email: user.email || "",
+              organizationId: "org-apex-01",
+              organizationName: "Apex Pictures Entertainment",
+              role: isOwnerAdmin ? "OWNER" : "PRODUCER",
+            };
+            setCurrentUser(tenantUser);
+            setUserRole(isOwnerAdmin ? "PRODUCER" : "PRODUCER");
+            try {
+              await syncUserProfileToFirestore(tenantUser);
+            } catch (err) {
+              console.warn("User profile sync deferred:", err);
+            }
+            showNotification(
+              `Signed in as ${user.email} (Tenant: Apex Pictures)`,
+            );
+          }
+        });
+      })
+      .catch(() => {
+        // Demo mode: no runtime config, no Firebase. The golden fixture below
+        // keeps every tab fully explorable.
+      });
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, []);
 
   // Check Firestore connection status and sync project if authenticated
   useEffect(() => {
     let active = true;
     async function initFirebasePersistence() {
+      // Firebase initialises lazily from the runtime config; until then the
+      // dashboard runs on its golden fixture and no sync is attempted.
+      if (!firebaseReady) {
+        return;
+      }
       const isOk = await testFirestoreConnection();
       if (active) setFirestoreConnected(isOk);
 
@@ -185,7 +247,7 @@ export default function HomePage() {
     return () => {
       active = currentTab === "differential";
     };
-  }, [activeProject.id, firebaseAuthUser]);
+  }, [activeProject.id, firebaseAuthUser, firebaseReady]);
 
   // Subscribe to live entity changes in Firestore ONLY when authenticated
   useEffect(() => {
@@ -238,7 +300,7 @@ export default function HomePage() {
 
   // Real-time multi-user presence broadcasting and subscription
   useEffect(() => {
-    if (!activeProject.id) return;
+    if (!activeProject.id || !firebaseReady) return;
     const unsub = subscribeToProjectPresence(activeProject.id, (presences) => {
       setActivePresences(presences);
     });
@@ -252,7 +314,7 @@ export default function HomePage() {
     );
 
     return () => unsub();
-  }, [activeProject.id, currentUser, currentTab, selectedEntityId]);
+  }, [activeProject.id, currentUser, currentTab, selectedEntityId, firebaseReady]);
 
   // Helper to create and append cryptographically linked audit event
   const recordChainedAuditEvent = async (
