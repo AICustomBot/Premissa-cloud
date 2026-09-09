@@ -1,0 +1,30 @@
+# Build config for the PERMISSA web dashboard image.
+#
+# Unlike the console, this image needs no build-time substitution: all client
+# configuration is served at runtime by the /api/config route handler from
+# PERMISSA_* environment variables, so a plain docker build is sufficient.
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: build
+    args:
+      - build
+      - --file
+      - Dockerfile.web
+      - --tag
+      - ${_IMAGE}
+      - .
+
+images:
+  - ${_IMAGE}
+
+options:
+  # A fresh project has no default Cloud Build logs bucket. Without this the
+  # build fails on log delivery rather than on anything to do with code.
+  logging: CLOUD_LOGGING_ONLY
+
+  # Deliberately no machineType: high-CPU types have no default quota and are
+  # rejected with FAILED_PRECONDITION before a build record exists.
+
+# Next.js builds are slower than the Vite console build.
+timeout: 1800s

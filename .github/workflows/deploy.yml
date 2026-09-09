@@ -1,7 +1,8 @@
 name: Deploy API
 
 # Option A API topology:
-#   Operator console -> Cloud Run (static bundle, no secrets)
+#   Console (login)  -> Cloud Run (static bundle, no secrets)
+#   Dashboard        -> deploy-web.yml, Cloud Run, no secrets
 #   API              -> this workflow, Cloud Run, us-central1
 #   Firestore        -> separate manual deploy-firestore.yml workflow
 #
@@ -34,6 +35,7 @@ env:
   GCP_REGION: us-central1
   FIRESTORE_DATABASE_ID: premissadb
   API_SERVICE: permissa-api
+  WEB_SERVICE: permissa-web
 
 jobs:
   deploy:
@@ -62,6 +64,33 @@ jobs:
             exit 1
           fi
 
+      # The dashboard is a second Cloud Run origin, so it must be in the CORS
+      # allowlist and it is the target the console forwards to after sign-in.
+      # Both values are resolved from the live service rather than kept in a
+      # repository variable: the env string below is applied with
+      # --set-env-vars, which replaces the whole block, so anything not
+      # recomputed here would be dropped on every API deploy.
+      #
+      # An absent dashboard is not an error. PERMISSA_WEB_APP_URL then resolves
+      # empty, HandoffService returns a null dashboardUrl, and the console
+      # stays put instead of forwarding into a 404.
+      - name: Resolve dashboard origin when deployed
+        id: web
+        run: |
+          URL="$(gcloud run services describe "$WEB_SERVICE" \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --region "$GCP_REGION" \
+            --format 'value(status.url)' 2>/dev/null || true)"
+          ORIGINS="${{ vars.CONSOLE_ORIGIN }}"
+          if [ -n "$URL" ]; then
+            ORIGINS="$ORIGINS,$URL"
+            echo "Dashboard origin: $URL"
+          else
+            echo "::notice::$WEB_SERVICE is not deployed yet. The console will not forward to a dashboard until Deploy Web Dashboard has run."
+          fi
+          echo "web_url=$URL" >> "$GITHUB_OUTPUT"
+          echo "allowed_origins=$ORIGINS" >> "$GITHUB_OUTPUT"
+
       - name: Build and push API image
         run: |
           gcloud builds submit \
@@ -87,10 +116,12 @@ jobs:
             --timeout 300 \
             --max-instances 3 \
             --min-instances 0 \
-            --set-env-vars "^;^NODE_ENV=production;PERMISSA_ALLOW_DEV_TOKENS=false;PERMISSA_REQUIRE_DURABLE_STORE=true;GOOGLE_CLOUD_PROJECT=${{ secrets.GCP_PROJECT_ID }};FIREBASE_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }};FIRESTORE_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }};FIRESTORE_DATABASE_ID=$FIRESTORE_DATABASE_ID;GCP_REGION=$GCP_REGION;VERTEX_LOCATION=$GCP_REGION;PERMISSA_ALLOWED_ORIGINS=${{ vars.CONSOLE_ORIGIN }};GEMINI_ENABLED=true;PARALLEL_ENABLED=true;GRAFANA_MCP_ENABLED=false;RUN_ENTITY_CAP=50;RUN_PARALLEL_CALL_CAP=50;ENTITY_PARALLEL_CALL_CAP=3;RUN_DEADLINE_SECONDS=600;RUN_COST_CAP_USD=10.00;AGGREGATE_PREDEMO_CAP_USD=80;MAX_CONCURRENT_RUNS=1;USER_DAILY_RUN_LIMIT=3;GLOBAL_DAILY_RUN_LIMIT=25" \
+            --set-env-vars "^;^NODE_ENV=production;PERMISSA_ALLOW_DEV_TOKENS=false;PERMISSA_REQUIRE_DURABLE_STORE=true;GOOGLE_CLOUD_PROJECT=${{ secrets.GCP_PROJECT_ID }};FIREBASE_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }};FIRESTORE_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }};FIRESTORE_DATABASE_ID=$FIRESTORE_DATABASE_ID;GCP_REGION=$GCP_REGION;VERTEX_LOCATION=$GCP_REGION;PERMISSA_ALLOWED_ORIGINS=${ALLOWED_ORIGINS};PERMISSA_WEB_APP_URL=${WEB_APP_URL};GEMINI_ENABLED=true;PARALLEL_ENABLED=true;GRAFANA_MCP_ENABLED=false;RUN_ENTITY_CAP=50;RUN_PARALLEL_CALL_CAP=50;ENTITY_PARALLEL_CALL_CAP=3;RUN_DEADLINE_SECONDS=600;RUN_COST_CAP_USD=10.00;AGGREGATE_PREDEMO_CAP_USD=80;MAX_CONCURRENT_RUNS=1;USER_DAILY_RUN_LIMIT=3;GLOBAL_DAILY_RUN_LIMIT=25" \
             --set-secrets "GEMINI_API_KEY=gemini-api-key:latest,PARALLEL_API_KEY=parallel-api-key:latest"
         env:
           IMAGE_API: ${{ secrets.ARTIFACT_REGISTRY }}/api:${{ github.sha }}
+          ALLOWED_ORIGINS: ${{ steps.web.outputs.allowed_origins }}
+          WEB_APP_URL: ${{ steps.web.outputs.web_url }}
 
       - name: Assert no plaintext secrets on the service spec
         run: |
