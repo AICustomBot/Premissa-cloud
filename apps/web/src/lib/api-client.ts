@@ -14,7 +14,7 @@
  * screen with no data behind it.
  */
 
-import type { CanonicalEntity, Finding } from "@permissa/contracts";
+import type { CanonicalEntity, ClearanceRun, Finding } from "@permissa/contracts";
 
 /** RFC 9457 problem details, as returned by the API's exception filter. */
 export type ProblemDetails = {
@@ -131,6 +131,37 @@ export type ScriptHistoryEntry = {
   pageCount: number;
   sceneCount: number;
   createdAt: string;
+};
+
+export type CreateRunResponse = {
+  run: ClearanceRun;
+  confirmedEntityCount: number;
+  deduplicated: boolean;
+};
+
+/**
+ * The server researches entities inside the request, bounded by a wall-clock
+ * budget, so a run can legitimately return with entities still pending.
+ * `resumable` means call executeRun again; the checkpoint prevents repeated
+ * work and repeated provider spend.
+ */
+export type ExecuteRunResponse = {
+  runId: string;
+  state: ClearanceRun["state"];
+  entitiesCompleted: number;
+  entitiesPending: number;
+  findingsWritten: number;
+  statusCounts: Record<string, number>;
+  estimatedCostUsd: number;
+  providerCallsUsed: number;
+  failedEntityCount: number;
+  resumable: boolean;
+  stopReason:
+    | "COMPLETED"
+    | "COST_CAP_REACHED"
+    | "TIME_BUDGET_REACHED"
+    | "ENTITY_CAP_REACHED"
+    | "ALL_ENTITIES_FAILED";
 };
 
 export function createApiClient(options: ApiClientOptions) {
@@ -258,6 +289,30 @@ export function createApiClient(options: ApiClientOptions) {
       request<CanonicalEntity>(
         `/projects/${projectId}/scripts/${scriptVersionId}/entities/merge`,
         { method: "POST", body: input },
+      ),
+
+    // -- runs -------------------------------------------------------------
+    createRun: (
+      projectId: string,
+      input: { scriptVersionId: string; jurisdiction?: string; idempotencyKey?: string },
+    ) =>
+      request<CreateRunResponse>(`/projects/${projectId}/runs`, {
+        method: "POST",
+        body: input,
+      }),
+
+    listRuns: (projectId: string) =>
+      request<{ projectId: string; total: number; runs: ClearanceRun[] }>(
+        `/projects/${projectId}/runs`,
+      ),
+
+    getRun: (projectId: string, runId: string) =>
+      request<ClearanceRun>(`/projects/${projectId}/runs/${runId}`),
+
+    executeRun: (projectId: string, runId: string) =>
+      request<ExecuteRunResponse>(
+        `/projects/${projectId}/runs/${runId}/execute`,
+        { method: "POST" },
       ),
 
     // -- research ---------------------------------------------------------
