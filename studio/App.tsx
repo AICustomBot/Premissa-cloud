@@ -355,6 +355,25 @@ export function App({ config }: { config: ConsoleConfig }) {
       setUnverified(false);
     });
 
+  const onOpenDashboard = () =>
+    run(async () => {
+      if (!user) {
+        throw new ApiError("Sign in first.");
+      }
+      const target = config.dashboardUrl;
+      if (!target) {
+        throw new ApiError(
+          "The dashboard URL is not configured on this console.",
+        );
+      }
+      // The SDK returns a valid token, refreshing it if the current one is
+      // close to its one-hour expiry. The token travels in the URL fragment,
+      // which is never sent to the dashboard's server or written to its
+      // access logs.
+      const token = await getIdToken(user);
+      window.location.assign(`${target}/#handoff=${encodeURIComponent(token)}`);
+    });
+
   const onCheckHealth = () =>
     run(async () => {
       setProjects(null);
@@ -523,6 +542,25 @@ export function App({ config }: { config: ConsoleConfig }) {
                 <span style={styles.identityKey}>Organisation</span>
                 <span>{identity?.organizationId ?? "none"}</span>
               </div>
+
+              {config.dashboardUrl && !unverified && (
+                <>
+                  <div style={styles.row}>
+                    <button
+                      style={styles.buttonPrimary}
+                      onClick={onOpenDashboard}
+                      disabled={busy}
+                    >
+                      Open Dashboard
+                    </button>
+                  </div>
+                  <p style={styles.hint}>
+                    Hands this signed-in session to the PERMISSA dashboard. The
+                    token travels in the URL fragment, so it never reaches a
+                    server or an access log.
+                  </p>
+                </>
+              )}
 
               {unverified && (
                 <div style={styles.warn}>
