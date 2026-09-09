@@ -1,0 +1,241 @@
+name: Deploy Web Dashboard
+
+# Option A console topology, extended:
+#   Web dashboard    -> this workflow, Cloud Run, us-central1, no secrets
+#   Operator console -> deploy-console.yml, Cloud Run, us-central1
+#   API              -> deploy.yml, Cloud Run, us-central1
+#   Firestore        -> deploy-firestore.yml, manual only
+#
+# The dashboard is the product front end (apps/web, Next.js). It receives the
+# same public Firebase web config as the console: a client identifier shipped
+# to every browser by design, not a credential. It is served to the browser at
+# runtime by the /config.json route handler, so nothing credential-shaped is
+# baked into the bundle (Dockerfile.web enforces this with the same grep gate
+# as Dockerfile.console).
+#
+# Signed-in sessions arrive from the operator console via the URL-fragment
+# handoff (studio/App.tsx -> apps/web/src/lib/handoff.ts). The token never
+# reaches a server log: URL fragments are client-side only.
+#
+# Path filters keep this independent of the API and the console. packages/ is
+# included because the dashboard bundles @permissa/contracts and
+# @permissa/policy.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - "packages/contracts/**"
+      - "packages/policy/**"
+      - "Dockerfile.web"
+      - "cloudbuild.web.yaml"
+      - ".github/workflows/deploy-web.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-web-production
+  cancel-in-progress: false
+
+env:
+  GCP_REGION: us-central1
+  API_SERVICE: permissa-api
+  CONSOLE_SERVICE: permissa-console
+  WEB_SERVICE: permissa-web
+  FIRESTORE_DATABASE_ID: premissadb
+
+jobs:
+  deploy-web:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Fail fast on missing configuration
+        run: |
+          missing=""
+          [ -n "${{ secrets.GCP_PROJECT_ID }}" ] || missing="$missing GCP_PROJECT_ID"
+          [ -n "${{ secrets.ARTIFACT_REGISTRY }}" ] || missing="$missing ARTIFACT_REGISTRY"
+          if [ -n "$missing" ]; then
+            echo "Missing required configuration:$missing" >&2
+            exit 1
+          fi
+
+      # Same validation as the console deploy: a malformed config would
+      # otherwise deploy a dashboard whose handoff and sign-in fail in the
+      # browser.
+      - name: Validate the Firebase web config
+        id: fbconfig
+        env:
+          FIREBASE_WEB_CONFIG: ${{ vars.FIREBASE_WEB_CONFIG }}
+        run: |
+          if [ -z "$FIREBASE_WEB_CONFIG" ]; then
+            echo "The FIREBASE_WEB_CONFIG repository variable is not set." >&2
+            echo "It must hold the public Firebase web config JSON: apiKey, authDomain, projectId, appId." >&2
+            exit 1
+          fi
+
+          # Only public fields survive, and the result is single-line so it can
+          # be passed safely as an environment value.
+          COMPACT="$(printf '%s' "$FIREBASE_WEB_CONFIG" | jq -c '{apiKey, authDomain, projectId, appId, messagingSenderId} | with_entries(select(.value != null))')" || {
+            echo "FIREBASE_WEB_CONFIG is not valid JSON." >&2
+            exit 1
+          }
+
+          printf '%s' "$COMPACT" | jq -e 'has("apiKey") and has("authDomain") and has("projectId") and has("appId")' > /dev/null || {
+            echo "FIREBASE_WEB_CONFIG must contain apiKey, authDomain, projectId and appId." >&2
+            exit 1
+          }
+
+          # A semicolon is the delimiter of the ^;^ env string below, so one
+          # inside the value would silently split into bogus variables.
+          case "$COMPACT" in
+            *";"*)
+              echo "FIREBASE_WEB_CONFIG must not contain a semicolon." >&2
+              exit 1
+              ;;
+          esac
+
+          if printf '%s' "$COMPACT" | grep -q 'PRIVATE KEY'; then
+            echo "FIREBASE_WEB_CONFIG contains private key material. It must hold only public client fields." >&2
+            exit 1
+          fi
+
+          echo "config=$COMPACT" >> "$GITHUB_OUTPUT"
+          echo "Firebase project: $(printf '%s' "$COMPACT" | jq -r .projectId)"
+
+      # Resolved from the live service rather than a hand-copied literal, so
+      # the dashboard can never be deployed against a stale or wrong API
+      # origin. The dashboard makes no API calls yet; the value is served to
+      # the client for the moment wiring lands.
+      - name: Resolve API base URL from the deployed service
+        id: api
+        run: |
+          URL="$(gcloud run services describe "$API_SERVICE" \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --region "$GCP_REGION" \
+            --format 'value(status.url)')"
+          if [ -z "$URL" ]; then
+            echo "Could not resolve the $API_SERVICE URL. Deploy the API first." >&2
+            exit 1
+          fi
+          curl --fail --silent --show-error --max-time 30 "$URL/v1/health" > /dev/null
+          echo "base_url=$URL/v1" >> "$GITHUB_OUTPUT"
+          echo "Resolved API base URL: $URL/v1"
+
+      # The dashboard links back to the console for sign-in once a handoff
+      # token expires, so the console must exist first.
+      - name: Resolve console URL from the deployed service
+        id: console
+        run: |
+          URL="$(gcloud run services describe "$CONSOLE_SERVICE" \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --region "$GCP_REGION" \
+            --format 'value(status.url)')"
+          if [ -z "$URL" ]; then
+            echo "Could not resolve the $CONSOLE_SERVICE URL. Deploy the console first." >&2
+            exit 1
+          fi
+          echo "console_url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Resolved console URL: $URL"
+
+      - name: Build and push dashboard image
+        run: |
+          gcloud builds submit \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --region "$GCP_REGION" \
+            --config cloudbuild.web.yaml \
+            --substitutions "_IMAGE=$IMAGE_WEB" \
+            .
+        env:
+          IMAGE_WEB: ${{ secrets.ARTIFACT_REGISTRY }}/web:${{ github.sha }}
+
+      # The dashboard runs with the console's service account: both are public
+      # static shells that hold no credentials and call no Google APIs. A
+      # dedicated account lands with the Terraform import work (P1).
+      - name: Deploy dashboard revision
+        run: |
+          gcloud run deploy "$WEB_SERVICE" \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --image "$IMAGE_WEB" \
+            --region "$GCP_REGION" \
+            --service-account permissa-console@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
+            --no-invoker-iam-check \
+            --port 8080 \
+            --timeout 60 \
+            --max-instances 3 \
+            --min-instances 0 \
+            --clear-secrets \
+            --set-env-vars "^;^PERMISSA_API_BASE_URL=${API_BASE_URL};PERMISSA_FIREBASE_WEB_CONFIG=${FIREBASE_WEB_CONFIG};PERMISSA_CONSOLE_URL=${CONSOLE_URL};PERMISSA_FIRESTORE_DATABASE_ID=${FIRESTORE_DATABASE_ID}"
+        env:
+          IMAGE_WEB: ${{ secrets.ARTIFACT_REGISTRY }}/web:${{ github.sha }}
+          API_BASE_URL: ${{ steps.api.outputs.base_url }}
+          FIREBASE_WEB_CONFIG: ${{ steps.fbconfig.outputs.config }}
+          CONSOLE_URL: ${{ steps.console.outputs.console_url }}
+
+      - name: Assert the dashboard carries no secrets
+        run: |
+          gcloud run services describe "$WEB_SERVICE" \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --region "$GCP_REGION" \
+            --format 'yaml(spec.template.spec.containers[0].env)' > web-env.yaml
+
+          # No PEM material anywhere on the spec, including inside the public
+          # config value.
+          if grep -q 'BEGIN .*PRIVATE KEY' web-env.yaml; then
+            echo "The dashboard service spec contains private key material." >&2
+            exit 1
+          fi
+
+          # The public Firebase web config is excluded by name: it is shipped
+          # to every browser by design. Every other variable is still checked
+          # for credential-shaped naming.
+          grep -v 'PERMISSA_FIREBASE_WEB_CONFIG' web-env.yaml > web-env-checked.yaml || true
+          if grep -Eiq '(API_KEY|TOKEN|SECRET|PASSWORD|PRIVATE_KEY)' web-env-checked.yaml; then
+            echo "The dashboard service spec references a credential. It must hold none." >&2
+            cat web-env-checked.yaml >&2
+            exit 1
+          fi
+
+      - name: Verify dashboard and report configuration state
+        run: |
+          URL="$(gcloud run services describe "$WEB_SERVICE" \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --region "$GCP_REGION" \
+            --format 'value(status.url)')"
+          curl --fail --silent --show-error --max-time 60 "$URL/" > /dev/null
+
+          # Proves the runtime config endpoint is serving a usable config, so
+          # a missing or malformed value fails the deploy instead of surfacing
+          # as a dead handoff.
+          curl --fail --silent --show-error --max-time 30 "$URL/config.json" > web-config.json
+          jq -e '.firebase.apiKey and .firebase.authDomain and .firebase.projectId and .firebase.appId' web-config.json > /dev/null || {
+            echo "The dashboard is serving an incomplete runtime config:" >&2
+            jq '.configError' web-config.json >&2
+            exit 1
+          }
+
+          {
+            echo "web_url=$URL"
+            echo "api_base_url=${{ steps.api.outputs.base_url }}"
+            echo "console_url=${{ steps.console.outputs.console_url }}"
+            echo "firebase_project=$(jq -r '.firebase.projectId' web-config.json)"
+            echo "revision=${{ github.sha }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          HOST="${URL#https://}"
+          echo "::notice::Add '$HOST' under Firebase Authentication > Settings > Authorised domains so dashboard Google sign-in works."
+          echo "::notice::The dashboard renders its golden fixture and calls no API endpoints yet. When API wiring lands, add '$URL' to PERMISSA_ALLOWED_ORIGINS in deploy.yml."
+          echo "::notice::Re-run the Deploy Console workflow so the console picks up PERMISSA_DASHBOARD_URL=$URL and shows the Open Dashboard button."
