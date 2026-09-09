@@ -11,8 +11,8 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { AuthGuard as FirebaseAuthGuard } from "../auth/auth.guard.js";
-import { type AuthenticatedUser } from "../auth/auth.types";
-import { ReviewsService } from "./reviews.service";
+import { type AuthenticatedUser } from "../auth/auth.types.js";
+import { ReviewsService } from "./reviews.service.js";
 import { SubmitReviewRequest } from "@permissa/contracts";
 
 @Controller("projects/:projectId")

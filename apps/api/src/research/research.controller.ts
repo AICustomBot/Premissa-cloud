@@ -8,9 +8,9 @@ import {
   HttpCode,
   HttpStatus,
 } from "@nestjs/common";
-import { ResearchService } from "./research.service";
-import { UsageLedgerService } from "./ledger/usage-ledger.service";
-import { CircuitBreaker } from "./circuit/circuit-breaker";
+import { ResearchService } from "./research.service.js";
+import { UsageLedgerService } from "./ledger/usage-ledger.service.js";
+import { CircuitBreaker } from "./circuit/circuit-breaker.js";
 import { AuthGuard as FirebaseAuthGuard } from "../auth/auth.guard.js";
 
 @Controller("projects/:projectId/research")
