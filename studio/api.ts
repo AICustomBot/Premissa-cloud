@@ -1,14 +1,23 @@
 /**
- * Minimal API client for the AI Studio operator console.
+ * Minimal API client for the PERMISSA operator console.
  *
  * Every call targets the deployed PERMISSA API. Nothing is computed locally:
  * clearance status, confidence and the evidence gate are server concerns, and
  * AGENTS.md forbids model-assigned status or client-side status derivation.
+ *
+ * The base URL is supplied at boot by studio/config.ts, which prefers the
+ * runtime value served by server.js over the build-time one.
  */
 
-export const API_BASE_URL: string = (
-  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? ""
-).replace(/\/$/, "");
+let apiBaseUrl = "";
+
+export function configureApi(baseUrl: string): void {
+  apiBaseUrl = baseUrl.replace(/\/$/, "");
+}
+
+export function getApiBaseUrl(): string {
+  return apiBaseUrl;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -25,9 +34,9 @@ async function request<T>(
   token?: string,
   init?: RequestInit,
 ): Promise<T> {
-  if (!API_BASE_URL) {
+  if (!apiBaseUrl) {
     throw new ApiError(
-      "VITE_API_BASE_URL is not configured. Set it in the AI Studio environment settings to the deployed API origin.",
+      "The API base URL is not configured. Set PERMISSA_API_BASE_URL on the console service, or VITE_API_BASE_URL for local development.",
     );
   }
 
@@ -39,12 +48,12 @@ async function request<T>(
 
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
+    response = await fetch(`${apiBaseUrl}${path}`, { ...init, headers });
   } catch (err: unknown) {
     // A network-level failure here is usually CORS or a private Cloud Run
     // service, not a bad token. Say so rather than guessing.
     throw new ApiError(
-      `Could not reach ${API_BASE_URL}. Check that the API is deployed, publicly reachable, and permits this origin via CORS. (${
+      `Could not reach ${apiBaseUrl}. Check that the API is deployed, publicly reachable, and permits this origin via CORS. (${
         err instanceof Error ? err.message : "network error"
       })`,
     );
@@ -53,13 +62,13 @@ async function request<T>(
   if (!response.ok) {
     if (response.status === 401) {
       throw new ApiError(
-        "Rejected by the API (401 AUTH_REQUIRED). Supply a valid Firebase ID token.",
+        "The API rejected this identity (401 AUTH_REQUIRED). Sign out and sign in again to obtain a fresh token.",
         401,
       );
     }
     if (response.status === 403) {
       throw new ApiError(
-        "Authenticated, but not authorised for this resource (403 FORBIDDEN).",
+        "Authenticated, but not authorised for this resource (403 FORBIDDEN). This identity may be missing its role or organisation claim.",
         403,
       );
     }

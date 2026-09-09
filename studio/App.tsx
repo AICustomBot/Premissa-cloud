@@ -1,11 +1,23 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
-  API_BASE_URL,
   ApiError,
+  getApiBaseUrl,
   getHealth,
   listProjects,
   type ProjectSummary,
 } from "./api.js";
+import type { ConsoleConfig } from "./config.js";
+import {
+  describeAuthError,
+  getIdToken,
+  initAuth,
+  readIdentity,
+  signInWithGoogle,
+  signOutOfConsole,
+  watchAuthState,
+  type ConsoleIdentity,
+} from "./firebase.js";
+import type { Auth, User } from "firebase/auth";
 
 const styles = {
   page: {
@@ -27,23 +39,7 @@ const styles = {
     padding: 20,
     marginBottom: 20,
   },
-  label: {
-    display: "block",
-    fontSize: 13,
-    color: "#9aa4ad",
-    marginBottom: 6,
-  },
-  input: {
-    width: "100%",
-    boxSizing: "border-box" as const,
-    padding: "9px 11px",
-    borderRadius: 7,
-    border: "1px solid #2b333b",
-    background: "#0d1114",
-    color: "#e7e9ea",
-    fontSize: 14,
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-  },
+  label: { display: "block", fontSize: 13, color: "#9aa4ad", marginBottom: 6 },
   row: { display: "flex", gap: 10, flexWrap: "wrap" as const, marginTop: 14 },
   button: {
     padding: "9px 16px",
@@ -52,6 +48,16 @@ const styles = {
     background: "#1d242b",
     color: "#e7e9ea",
     fontSize: 14,
+    cursor: "pointer",
+  },
+  buttonPrimary: {
+    padding: "10px 18px",
+    borderRadius: 7,
+    border: "1px solid #3b6ea5",
+    background: "#1b4b7d",
+    color: "#eaf2fa",
+    fontSize: 14,
+    fontWeight: 500,
     cursor: "pointer",
   },
   pre: {
@@ -72,6 +78,15 @@ const styles = {
     border: "1px solid #5b2126",
     color: "#ffb4b4",
     fontSize: 14,
+  },
+  warn: {
+    margin: "14px 0 0",
+    padding: 14,
+    borderRadius: 7,
+    background: "#1d1913",
+    border: "1px solid #3d3320",
+    color: "#e2cf9f",
+    fontSize: 13.5,
   },
   table: {
     width: "100%",
@@ -100,16 +115,67 @@ const styles = {
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
     fontSize: 13,
   },
+  identityGrid: {
+    display: "grid",
+    gridTemplateColumns: "120px 1fr",
+    gap: "6px 14px",
+    fontSize: 14,
+    marginTop: 4,
+  },
+  identityKey: { color: "#9aa4ad" },
 };
 
-export function App() {
-  // Held in memory only. Never written to localStorage or sessionStorage, so
-  // publishing this page cannot leak a credential.
-  const [token, setToken] = useState("");
+export function App({ config }: { config: ConsoleConfig }) {
+  const [auth, setAuth] = useState<Auth | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [identity, setIdentity] = useState<ConsoleIdentity | null>(null);
   const [health, setHealth] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const firebase = config.firebase;
+    if (!firebase) {
+      setAuthReady(true);
+      return;
+    }
+
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+
+    initAuth(firebase)
+      .then((instance) => {
+        if (cancelled) {
+          return;
+        }
+        setAuth(instance);
+        unsubscribe = watchAuthState(instance, (nextUser) => {
+          setUser(nextUser);
+          setAuthReady(true);
+          if (!nextUser) {
+            setIdentity(null);
+            setProjects(null);
+            return;
+          }
+          readIdentity(nextUser)
+            .then(setIdentity)
+            .catch(() => setIdentity(null));
+        });
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(describeAuthError(err));
+          setAuthReady(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, [config.firebase]);
 
   const run = useCallback(async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -118,14 +184,32 @@ export function App() {
       await fn();
     } catch (err: unknown) {
       setError(
-        err instanceof ApiError || err instanceof Error
+        err instanceof ApiError
           ? err.message
-          : "Unexpected failure.",
+          : describeAuthError(err),
       );
     } finally {
       setBusy(false);
     }
   }, []);
+
+  const onSignIn = () =>
+    run(async () => {
+      if (!auth) {
+        throw new ApiError("Authentication is not configured.");
+      }
+      await signInWithGoogle(auth);
+    });
+
+  const onSignOut = () =>
+    run(async () => {
+      if (!auth) {
+        return;
+      }
+      await signOutOfConsole(auth);
+      setHealth(null);
+      setProjects(null);
+    });
 
   const onCheckHealth = () =>
     run(async () => {
@@ -136,11 +220,14 @@ export function App() {
 
   const onListProjects = () =>
     run(async () => {
-      if (!token.trim()) {
-        throw new ApiError("Paste a Firebase ID token first.");
+      if (!user) {
+        throw new ApiError("Sign in first.");
       }
       setHealth(null);
-      const result = await listProjects(token.trim());
+      // The SDK returns a valid token, refreshing it if the current one is
+      // close to its one-hour expiry. No token is stored by this code.
+      const token = await getIdToken(user);
+      const result = await listProjects(token);
       setProjects(result.items ?? []);
     });
 
@@ -155,7 +242,7 @@ export function App() {
         <div style={styles.card}>
           <span style={styles.label}>API base URL</span>
           <code style={styles.code}>
-            {API_BASE_URL || "not configured — set VITE_API_BASE_URL"}
+            {getApiBaseUrl() || "not configured"}
           </code>
           <div style={styles.row}>
             <button
@@ -170,33 +257,80 @@ export function App() {
         </div>
 
         <div style={styles.card}>
-          <label style={styles.label} htmlFor="token">
-            Firebase ID token
-          </label>
-          <input
-            id="token"
-            style={styles.input}
-            type="password"
-            autoComplete="off"
-            spellCheck={false}
-            placeholder="Paste a bearer token"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-          />
-          <div style={styles.row}>
-            <button
-              style={styles.button}
-              onClick={onListProjects}
-              disabled={busy}
-            >
-              Load projects
-            </button>
-          </div>
+          <span style={styles.label}>Identity</span>
+
+          {!config.firebase && (
+            <div style={styles.warn}>
+              {config.configError ??
+                "Sign-in is unavailable because the Firebase web configuration is missing."}
+            </div>
+          )}
+
+          {config.firebase && !authReady && (
+            <p style={{ margin: 0, color: "#9aa4ad" }}>Loading session…</p>
+          )}
+
+          {config.firebase && authReady && !user && (
+            <>
+              <p style={{ margin: "0 0 4px" }}>
+                Sign in with your Google account to use the console.
+              </p>
+              <div style={styles.row}>
+                <button
+                  style={styles.buttonPrimary}
+                  onClick={onSignIn}
+                  disabled={busy}
+                >
+                  Continue with Google
+                </button>
+              </div>
+            </>
+          )}
+
+          {config.firebase && authReady && user && (
+            <>
+              <div style={styles.identityGrid}>
+                <span style={styles.identityKey}>Signed in</span>
+                <span>{identity?.email ?? user.email ?? user.uid}</span>
+                <span style={styles.identityKey}>User ID</span>
+                <code style={styles.code}>{user.uid}</code>
+                <span style={styles.identityKey}>Role claim</span>
+                <span>{identity?.role ?? "none"}</span>
+                <span style={styles.identityKey}>Organisation</span>
+                <span>{identity?.organizationId ?? "none"}</span>
+              </div>
+
+              {identity && (!identity.role || !identity.organizationId) && (
+                <div style={styles.warn}>
+                  This identity has no role and/or organisation claim, so the API
+                  will treat it as a PRODUCER with no organisation scope. Grant
+                  claims with <code style={styles.code}>npm run claims:set</code>
+                  , then sign out and back in — custom claims only appear in
+                  newly issued tokens.
+                </div>
+              )}
+
+              <div style={styles.row}>
+                <button
+                  style={styles.button}
+                  onClick={onListProjects}
+                  disabled={busy}
+                >
+                  Load projects
+                </button>
+                <button
+                  style={styles.button}
+                  onClick={onSignOut}
+                  disabled={busy}
+                >
+                  Sign out
+                </button>
+              </div>
+            </>
+          )}
 
           {projects && projects.length === 0 && (
-            <pre style={styles.pre}>
-              No projects visible to this identity.
-            </pre>
+            <pre style={styles.pre}>No projects visible to this identity.</pre>
           )}
 
           {projects && projects.length > 0 && (
