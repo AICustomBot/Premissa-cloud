@@ -26,12 +26,20 @@ RUN test -n "$VITE_API_BASE_URL" \
 # Only console build inputs are copied. The apps/ and packages/ workspaces are
 # intentionally excluded so the console cannot import server-side code, policy
 # thresholds, or the evidence gate.
-COPY package.json package-lock.json tsconfig.base.json vite.config.ts index.html ./
+#
+# package*.json is a glob deliberately: this repository has no root npm
+# lockfile committed (only a leftover bun.lock from the AI Studio era), and
+# naming package-lock.json explicitly made this COPY fail before npm ever ran.
+# The glob keeps working today and picks a lockfile up automatically once one
+# is committed.
+COPY package*.json ./
+COPY tsconfig.base.json vite.config.ts index.html ./
 COPY studio ./studio
 
-# npm install rather than npm ci: the root lockfile describes the whole
-# monorepo, while this build context omits the workspace directories on
-# purpose. CI still installs from the lockfile for full-monorepo checks.
+# npm install rather than npm ci: there is no committed root lockfile, and this
+# build context omits the workspace directories on purpose. npm ci would fail
+# on both counts. apps/api/Dockerfile installs the same way for the same
+# reason.
 RUN npm install --no-audit --no-fund
 
 RUN npm run build
