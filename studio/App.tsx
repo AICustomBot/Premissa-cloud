@@ -8,10 +8,17 @@ import {
 } from "./api.js";
 import type { ConsoleConfig } from "./config.js";
 import {
+  MIN_PASSWORD_LENGTH,
   describeAuthError,
   getIdToken,
   initAuth,
+  needsEmailVerification,
   readIdentity,
+  refreshEmailVerification,
+  registerWithEmailPassword,
+  resendEmailVerification,
+  sendPasswordReset,
+  signInWithEmailPassword,
   signInWithGoogle,
   signOutOfConsole,
   watchAuthState,
@@ -60,6 +67,51 @@ const styles = {
     fontWeight: 500,
     cursor: "pointer",
   },
+  buttonLink: {
+    padding: 0,
+    border: "none",
+    background: "none",
+    color: "#7fb0e0",
+    fontSize: 13.5,
+    cursor: "pointer",
+    textDecoration: "underline",
+  },
+  tabs: {
+    display: "flex",
+    gap: 6,
+    marginBottom: 16,
+    borderBottom: "1px solid #232a31",
+  },
+  tab: {
+    padding: "8px 12px",
+    border: "none",
+    background: "none",
+    color: "#9aa4ad",
+    fontSize: 14,
+    cursor: "pointer",
+    borderBottom: "2px solid transparent",
+  },
+  tabActive: {
+    padding: "8px 12px",
+    border: "none",
+    background: "none",
+    color: "#e7e9ea",
+    fontSize: 14,
+    cursor: "pointer",
+    borderBottom: "2px solid #3b6ea5",
+  },
+  field: { marginBottom: 12 },
+  input: {
+    width: "100%",
+    boxSizing: "border-box" as const,
+    padding: "9px 11px",
+    borderRadius: 7,
+    border: "1px solid #2b333b",
+    background: "#0d1114",
+    color: "#e7e9ea",
+    fontSize: 14,
+  },
+  hint: { margin: "6px 0 0", color: "#77828b", fontSize: 12.5 },
   pre: {
     margin: "14px 0 0",
     padding: 14,
@@ -78,6 +130,15 @@ const styles = {
     border: "1px solid #5b2126",
     color: "#ffb4b4",
     fontSize: 14,
+  },
+  ok: {
+    margin: "14px 0 0",
+    padding: 14,
+    borderRadius: 7,
+    background: "#11201a",
+    border: "1px solid #1f4634",
+    color: "#9fdcbc",
+    fontSize: 13.5,
   },
   warn: {
     margin: "14px 0 0",
@@ -123,7 +184,16 @@ const styles = {
     marginTop: 4,
   },
   identityKey: { color: "#9aa4ad" },
+  divider: {
+    margin: "18px 0 14px",
+    borderTop: "1px solid #232a31",
+    paddingTop: 14,
+    color: "#77828b",
+    fontSize: 12.5,
+  },
 };
+
+type AuthMode = "signin" | "register";
 
 export function App({ config }: { config: ConsoleConfig }) {
   const [auth, setAuth] = useState<Auth | null>(null);
@@ -133,7 +203,12 @@ export function App({ config }: { config: ConsoleConfig }) {
   const [health, setHealth] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<AuthMode>("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [unverified, setUnverified] = useState(false);
 
   useEffect(() => {
     const firebase = config.firebase;
@@ -157,8 +232,10 @@ export function App({ config }: { config: ConsoleConfig }) {
           if (!nextUser) {
             setIdentity(null);
             setProjects(null);
+            setUnverified(false);
             return;
           }
+          setUnverified(needsEmailVerification(nextUser));
           readIdentity(nextUser)
             .then(setIdentity)
             .catch(() => setIdentity(null));
@@ -180,25 +257,91 @@ export function App({ config }: { config: ConsoleConfig }) {
   const run = useCallback(async (fn: () => Promise<void>) => {
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       await fn();
     } catch (err: unknown) {
-      setError(
-        err instanceof ApiError
-          ? err.message
-          : describeAuthError(err),
-      );
+      setError(err instanceof ApiError ? err.message : describeAuthError(err));
     } finally {
       setBusy(false);
     }
   }, []);
 
-  const onSignIn = () =>
+  const requireAuth = (): Auth => {
+    if (!auth) {
+      throw new ApiError("Authentication is not configured.");
+    }
+    return auth;
+  };
+
+  const onSignInWithGoogle = () =>
     run(async () => {
-      if (!auth) {
-        throw new ApiError("Authentication is not configured.");
+      await signInWithGoogle(requireAuth());
+    });
+
+  const onSubmitPassword = (event: React.FormEvent) => {
+    event.preventDefault();
+    return run(async () => {
+      const instance = requireAuth();
+      if (!email.trim()) {
+        throw new ApiError("Enter your email address.");
       }
-      await signInWithGoogle(auth);
+      if (mode === "register") {
+        if (password.length < MIN_PASSWORD_LENGTH) {
+          throw new ApiError(
+            `Choose a password of at least ${MIN_PASSWORD_LENGTH} characters.`,
+          );
+        }
+        await registerWithEmailPassword(instance, email, password);
+        setPassword("");
+        setNotice(
+          `Account created. A verification link was sent to ${email.trim()}. Open it, then choose "I have verified".`,
+        );
+        return;
+      }
+      await signInWithEmailPassword(instance, email, password);
+      setPassword("");
+    });
+  };
+
+  const onResetPassword = () =>
+    run(async () => {
+      const instance = requireAuth();
+      if (!email.trim()) {
+        throw new ApiError(
+          "Enter the account's email address first, then request the reset.",
+        );
+      }
+      await sendPasswordReset(instance, email);
+      setNotice(
+        `If an account exists for ${email.trim()}, a password reset link is on its way.`,
+      );
+    });
+
+  const onResendVerification = () =>
+    run(async () => {
+      if (!user) {
+        throw new ApiError("Sign in first.");
+      }
+      await resendEmailVerification(user);
+      setNotice(`Verification link sent again to ${user.email ?? "this account"}.`);
+    });
+
+  const onConfirmVerified = () =>
+    run(async () => {
+      if (!user) {
+        throw new ApiError("Sign in first.");
+      }
+      const verified = await refreshEmailVerification(user);
+      setUnverified(!verified);
+      if (verified) {
+        setIdentity(await readIdentity(user));
+        setNotice("Address verified. This session can now call the API.");
+        return;
+      }
+      throw new ApiError(
+        "This address is still unverified. Open the link in the email, then try again.",
+      );
     });
 
   const onSignOut = () =>
@@ -209,6 +352,7 @@ export function App({ config }: { config: ConsoleConfig }) {
       await signOutOfConsole(auth);
       setHealth(null);
       setProjects(null);
+      setUnverified(false);
     });
 
   const onCheckHealth = () =>
@@ -222,6 +366,11 @@ export function App({ config }: { config: ConsoleConfig }) {
     run(async () => {
       if (!user) {
         throw new ApiError("Sign in first.");
+      }
+      if (unverified) {
+        throw new ApiError(
+          "The API rejects password identities with an unverified address. Verify the address first.",
+        );
       }
       setHealth(null);
       // The SDK returns a valid token, refreshing it if the current one is
@@ -241,9 +390,7 @@ export function App({ config }: { config: ConsoleConfig }) {
 
         <div style={styles.card}>
           <span style={styles.label}>API base URL</span>
-          <code style={styles.code}>
-            {getApiBaseUrl() || "not configured"}
-          </code>
+          <code style={styles.code}>{getApiBaseUrl() || "not configured"}</code>
           <div style={styles.row}>
             <button
               style={styles.button}
@@ -272,18 +419,93 @@ export function App({ config }: { config: ConsoleConfig }) {
 
           {config.firebase && authReady && !user && (
             <>
-              <p style={{ margin: "0 0 4px" }}>
-                Sign in with your Google account to use the console.
-              </p>
-              <div style={styles.row}>
+              <div style={styles.tabs}>
                 <button
-                  style={styles.buttonPrimary}
-                  onClick={onSignIn}
+                  style={mode === "signin" ? styles.tabActive : styles.tab}
+                  onClick={() => setMode("signin")}
                   disabled={busy}
                 >
-                  Continue with Google
+                  Sign in
+                </button>
+                <button
+                  style={mode === "register" ? styles.tabActive : styles.tab}
+                  onClick={() => setMode("register")}
+                  disabled={busy}
+                >
+                  Create account
                 </button>
               </div>
+
+              <form onSubmit={onSubmitPassword}>
+                <div style={styles.field}>
+                  <label style={styles.label} htmlFor="console-email">
+                    Email
+                  </label>
+                  <input
+                    id="console-email"
+                    style={styles.input}
+                    type="email"
+                    autoComplete="username"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    disabled={busy}
+                    required
+                  />
+                </div>
+                <div style={styles.field}>
+                  <label style={styles.label} htmlFor="console-password">
+                    Password
+                  </label>
+                  <input
+                    id="console-password"
+                    style={styles.input}
+                    type="password"
+                    autoComplete={
+                      mode === "register" ? "new-password" : "current-password"
+                    }
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={busy}
+                    required
+                    minLength={mode === "register" ? MIN_PASSWORD_LENGTH : 1}
+                  />
+                  {mode === "register" && (
+                    <p style={styles.hint}>
+                      At least {MIN_PASSWORD_LENGTH} characters. A verification
+                      link is sent immediately; the API refuses unverified
+                      password accounts.
+                    </p>
+                  )}
+                </div>
+                <div style={styles.row}>
+                  <button
+                    style={styles.buttonPrimary}
+                    type="submit"
+                    disabled={busy}
+                  >
+                    {mode === "register" ? "Create account" : "Sign in"}
+                  </button>
+                  {mode === "signin" && (
+                    <button
+                      style={styles.buttonLink}
+                      type="button"
+                      onClick={onResetPassword}
+                      disabled={busy}
+                    >
+                      Forgot password?
+                    </button>
+                  )}
+                </div>
+              </form>
+
+              <div style={styles.divider}>or</div>
+              <button
+                style={styles.button}
+                onClick={onSignInWithGoogle}
+                disabled={busy}
+              >
+                Continue with Google
+              </button>
             </>
           )}
 
@@ -294,11 +516,37 @@ export function App({ config }: { config: ConsoleConfig }) {
                 <span>{identity?.email ?? user.email ?? user.uid}</span>
                 <span style={styles.identityKey}>User ID</span>
                 <code style={styles.code}>{user.uid}</code>
+                <span style={styles.identityKey}>Email verified</span>
+                <span>{user.emailVerified ? "yes" : "no"}</span>
                 <span style={styles.identityKey}>Role claim</span>
                 <span>{identity?.role ?? "none"}</span>
                 <span style={styles.identityKey}>Organisation</span>
                 <span>{identity?.organizationId ?? "none"}</span>
               </div>
+
+              {unverified && (
+                <div style={styles.warn}>
+                  This address is not verified, so the API will reject it with
+                  EMAIL_NOT_VERIFIED. Open the link sent to{" "}
+                  {user.email ?? "your address"}, then confirm below.
+                  <div style={styles.row}>
+                    <button
+                      style={styles.button}
+                      onClick={onConfirmVerified}
+                      disabled={busy}
+                    >
+                      I have verified
+                    </button>
+                    <button
+                      style={styles.button}
+                      onClick={onResendVerification}
+                      disabled={busy}
+                    >
+                      Resend link
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {identity && (!identity.role || !identity.organizationId) && (
                 <div style={styles.warn}>
@@ -359,6 +607,7 @@ export function App({ config }: { config: ConsoleConfig }) {
           )}
         </div>
 
+        {notice && <div style={styles.ok}>{notice}</div>}
         {error && <div style={styles.error}>{error}</div>}
 
         <div style={styles.notice}>

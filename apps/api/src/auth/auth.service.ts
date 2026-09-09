@@ -6,6 +6,60 @@ const DEV_TOKEN_PREFIX = "dev-token:";
 
 type DefaultRole = AuthenticatedUser["defaultRole"];
 
+/** The subset of a decoded token that the email-verification gate reads. */
+export type EmailVerifiableToken = {
+  email?: string;
+  email_verified?: boolean;
+  firebase?: { sign_in_provider?: string };
+};
+
+/**
+ * Password is the only sign-in provider whose email address is unproven: anyone
+ * can register with an address they do not control. Google and other federated
+ * providers prove the address themselves before issuing a token.
+ */
+export function isPasswordProvider(decoded: EmailVerifiableToken): boolean {
+  return decoded.firebase?.sign_in_provider === "password";
+}
+
+/**
+ * Whether password identities must have proven their email address.
+ *
+ * An explicit environment value wins in either direction. Otherwise the gate
+ * is enforced in production only, so local development and automated tests are
+ * never blocked on mailbox access.
+ */
+export function resolveVerifiedEmailPolicy(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (env.PERMISSA_REQUIRE_VERIFIED_EMAIL === "true") {
+    return true;
+  }
+  if (env.PERMISSA_REQUIRE_VERIFIED_EMAIL === "false") {
+    return false;
+  }
+  return env.NODE_ENV === "production";
+}
+
+/**
+ * The rejection reason code for this token, or null when it may proceed.
+ *
+ * Kept as a pure function so the policy is testable without a live Firebase
+ * project or a forged token.
+ */
+export function emailVerificationFailure(
+  decoded: EmailVerifiableToken,
+  enforced: boolean,
+): "EMAIL_NOT_VERIFIED" | null {
+  if (!enforced) {
+    return null;
+  }
+  if (!isPasswordProvider(decoded)) {
+    return null;
+  }
+  return decoded.email_verified === true ? null : "EMAIL_NOT_VERIFIED";
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -21,14 +75,25 @@ export class AuthService {
    */
   private readonly devTokensEnabled: boolean;
 
+  /** Whether password identities must have a verified email address. */
+  private readonly requireVerifiedEmail: boolean;
+
   constructor() {
     this.devTokensEnabled = AuthService.resolveDevTokenPolicy();
+    this.requireVerifiedEmail = resolveVerifiedEmailPolicy();
 
     if (this.devTokensEnabled && process.env.NODE_ENV === "production") {
       this.logger.warn(
         "PERMISSA_ALLOW_DEV_TOKENS=true in production. Unverified bearer tokens " +
           "are being accepted and any caller can choose their own uid, role and " +
           "organization. Never enable this against real tenant data.",
+      );
+    }
+
+    if (!this.requireVerifiedEmail && process.env.NODE_ENV === "production") {
+      this.logger.warn(
+        "PERMISSA_REQUIRE_VERIFIED_EMAIL=false in production. Password accounts " +
+          "are accepted without proving ownership of their email address.",
       );
     }
 
@@ -140,15 +205,9 @@ export class AuthService {
       throw new UnauthorizedException("AUTH_REQUIRED");
     }
 
+    let decoded: admin.auth.DecodedIdToken;
     try {
-      const decoded = await admin.auth().verifyIdToken(token);
-      return {
-        uid: decoded.uid,
-        email: decoded.email ?? `${decoded.uid}@permissa.local`,
-        name: decoded.name,
-        organizationId: (decoded.orgId as string) || undefined,
-        defaultRole: (decoded.role as DefaultRole) || "PRODUCER",
-      };
+      decoded = await admin.auth().verifyIdToken(token);
     } catch (err: unknown) {
       // Say why the token was refused. This previously swallowed the reason
       // entirely, so a misconfigured project id was indistinguishable from an
@@ -162,6 +221,28 @@ export class AuthService {
       );
       throw new UnauthorizedException("AUTH_REQUIRED");
     }
+
+    // The gate runs after verification, and outside the catch above, so its
+    // specific reason code is not flattened into AUTH_REQUIRED.
+    const failure = emailVerificationFailure(
+      decoded as EmailVerifiableToken,
+      this.requireVerifiedEmail,
+    );
+    if (failure) {
+      this.logger.warn(
+        `Rejected ${decoded.uid}: password identity has not verified its ` +
+          "email address.",
+      );
+      throw new UnauthorizedException(failure);
+    }
+
+    return {
+      uid: decoded.uid,
+      email: decoded.email ?? `${decoded.uid}@permissa.local`,
+      name: decoded.name,
+      organizationId: (decoded.orgId as string) || undefined,
+      defaultRole: (decoded.role as DefaultRole) || "PRODUCER",
+    };
   }
 
   /**

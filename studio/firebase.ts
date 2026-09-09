@@ -10,14 +10,23 @@
  * confines it to the browser tab, so closing the tab ends the session on a
  * shared workstation. That is the correct trade-off for a console that reaches
  * tenant clearance data.
+ *
+ * Two providers are offered. Google proves the email address itself. Password
+ * does not, so a password account is only usable once the address is verified;
+ * the API enforces that, and this module exposes the state and the actions
+ * (resend, re-check) needed to get out of it.
  */
 import { initializeApp, type FirebaseApp } from "firebase/app";
 import {
   GoogleAuthProvider,
   browserSessionPersistence,
+  createUserWithEmailAndPassword,
   getAuth,
   onIdTokenChanged,
+  sendEmailVerification,
+  sendPasswordResetEmail,
   setPersistence,
+  signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
   type Auth,
@@ -27,6 +36,9 @@ import type { FirebaseWebConfig } from "./config.js";
 
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
+
+/** Firebase itself accepts six characters; eight is the console's floor. */
+export const MIN_PASSWORD_LENGTH = 8;
 
 export async function initAuth(config: FirebaseWebConfig): Promise<Auth> {
   if (auth) {
@@ -93,6 +105,74 @@ export async function signInWithGoogle(instance: Auth): Promise<void> {
   await signInWithPopup(instance, provider);
 }
 
+export async function signInWithEmailPassword(
+  instance: Auth,
+  email: string,
+  password: string,
+): Promise<void> {
+  await signInWithEmailAndPassword(instance, email.trim(), password);
+}
+
+/**
+ * Create a password account and send its verification mail in the same step.
+ *
+ * Sending it here rather than on first rejection means the operator never has
+ * to ask for the mail they were always going to need.
+ */
+export async function registerWithEmailPassword(
+  instance: Auth,
+  email: string,
+  password: string,
+): Promise<void> {
+  const credential = await createUserWithEmailAndPassword(
+    instance,
+    email.trim(),
+    password,
+  );
+  await sendEmailVerification(credential.user);
+}
+
+export async function sendPasswordReset(
+  instance: Auth,
+  email: string,
+): Promise<void> {
+  await sendPasswordResetEmail(instance, email.trim());
+}
+
+export async function resendEmailVerification(user: User): Promise<void> {
+  await sendEmailVerification(user);
+}
+
+export function usesPasswordProvider(user: User): boolean {
+  return user.providerData.some((entry) => entry.providerId === "password");
+}
+
+/**
+ * True when this identity cannot call the API yet.
+ *
+ * Only password identities can be in this state: a federated provider has
+ * already proven the address.
+ */
+export function needsEmailVerification(user: User): boolean {
+  return usesPasswordProvider(user) && !user.emailVerified;
+}
+
+/**
+ * Re-read the account after the operator clicks the mailed link.
+ *
+ * `emailVerified` lives on the server-side account record, so the local user
+ * must be reloaded. A force-refreshed token is then required: the existing one
+ * still carries email_verified=false and the API reads the token, not the
+ * account.
+ */
+export async function refreshEmailVerification(user: User): Promise<boolean> {
+  await user.reload();
+  if (user.emailVerified) {
+    await user.getIdToken(true);
+  }
+  return user.emailVerified;
+}
+
 export async function signOutOfConsole(instance: Auth): Promise<void> {
   await signOut(instance);
 }
@@ -121,7 +201,7 @@ export function describeAuthError(err: unknown): string {
     case "auth/unauthorized-domain":
       return "This origin is not an authorised domain for the Firebase project. Add it under Authentication > Settings > Authorised domains.";
     case "auth/operation-not-allowed":
-      return "Google sign-in is not enabled for this Firebase project. Enable the Google provider under Authentication > Sign-in method.";
+      return "This sign-in method is not enabled for the Firebase project. Enable the Google and Email/Password providers under Authentication > Sign-in method.";
     case "auth/invalid-api-key":
     case "auth/api-key-not-valid.-please-pass-a-valid-api-key.":
       return "The Firebase API key is invalid or restricted from this origin. Check the key's HTTP referrer restrictions.";
@@ -129,6 +209,27 @@ export function describeAuthError(err: unknown): string {
       return "Could not reach Firebase Authentication. Check network connectivity and any API key restrictions.";
     case "auth/user-disabled":
       return "This account is disabled in Firebase Authentication.";
+    case "auth/invalid-email":
+      return "That is not a valid email address.";
+    case "auth/missing-password":
+      return "Enter your password.";
+    // Firebase returns invalid-credential for a wrong password and for an
+    // unknown address once email-enumeration protection is on. Keep the
+    // message ambiguous on purpose: distinguishing them leaks account
+    // existence.
+    case "auth/invalid-credential":
+    case "auth/invalid-login-credentials":
+    case "auth/wrong-password":
+    case "auth/user-not-found":
+      return "That email address and password combination was not accepted.";
+    case "auth/email-already-in-use":
+      return "An account already exists for that address. Sign in instead, or reset the password.";
+    case "auth/weak-password":
+      return `Choose a password of at least ${MIN_PASSWORD_LENGTH} characters.`;
+    case "auth/too-many-requests":
+      return "Too many attempts from this device. Firebase has temporarily blocked further tries; wait a few minutes or reset the password.";
+    case "auth/requires-recent-login":
+      return "This action needs a fresh sign-in. Sign out and back in, then retry.";
     default:
       break;
   }
