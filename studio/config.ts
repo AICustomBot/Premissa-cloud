@@ -24,6 +24,8 @@ export type FirebaseWebConfig = {
 export type ConsoleConfig = {
   /** Origin plus version prefix, e.g. https://host/v1. No trailing slash. */
   apiBaseUrl: string;
+  /** Dashboard origin for the session handoff. Null when not deployed. */
+  dashboardUrl: string | null;
   /** Null when sign-in cannot be offered. */
   firebase: FirebaseWebConfig | null;
   /** Why sign-in is unavailable, if it is. */
@@ -88,6 +90,9 @@ export async function loadConsoleConfig(): Promise<ConsoleConfig> {
   let apiBaseUrl = stripTrailingSlash(
     ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "").trim(),
   );
+  let dashboardUrl = stripTrailingSlash(
+    ((import.meta.env.VITE_DASHBOARD_URL as string | undefined) ?? "").trim(),
+  );
   let firebase = coerceFirebaseConfig(
     parseJsonEnv(import.meta.env.VITE_FIREBASE_WEB_CONFIG),
   );
@@ -101,11 +106,15 @@ export async function loadConsoleConfig(): Promise<ConsoleConfig> {
     if (response.ok) {
       const body = (await response.json()) as {
         apiBaseUrl?: unknown;
+        dashboardUrl?: unknown;
         firebase?: unknown;
         configError?: unknown;
       };
       if (typeof body.apiBaseUrl === "string" && body.apiBaseUrl.trim()) {
         apiBaseUrl = stripTrailingSlash(body.apiBaseUrl.trim());
+      }
+      if (typeof body.dashboardUrl === "string" && body.dashboardUrl.trim()) {
+        dashboardUrl = stripTrailingSlash(body.dashboardUrl.trim());
       }
       const runtimeFirebase = coerceFirebaseConfig(body.firebase);
       if (runtimeFirebase) {
@@ -127,5 +136,5 @@ export async function loadConsoleConfig(): Promise<ConsoleConfig> {
     configError = null;
   }
 
-  return { apiBaseUrl, firebase, configError };
+  return { apiBaseUrl, dashboardUrl: dashboardUrl || null, firebase, configError };
 }

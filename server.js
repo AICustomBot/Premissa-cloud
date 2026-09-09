@@ -10,13 +10,13 @@
  *   GET /__/config.json
  *
  * That endpoint returns the console's public client configuration (the API
- * origin and the Firebase web config). Those values are public by
- * construction, but they are served at runtime rather than baked into the
- * bundle because Dockerfile.console fails the build if any AIza-prefixed key
- * appears in dist/ -- the guard that stops a Gemini API key reaching a public
- * URL, since Gemini keys share that prefix. Serving the config here keeps that
- * guard intact and lets the API origin or Firebase app change without a
- * rebuild.
+ * origin, the Firebase web config, and the dashboard origin for the session
+ * handoff). Those values are public by construction, but they are served at
+ * runtime rather than baked into the bundle because Dockerfile.console fails
+ * the build if any AIza-prefixed key appears in dist/ -- the guard that stops
+ * a Gemini API key reaching a public URL, since Gemini keys share that
+ * prefix. Serving the config here keeps that guard intact and lets the API
+ * origin, Firebase app, or dashboard origin change without a rebuild.
  *
  * No secrets are read, and no clearance logic runs here.
  */
@@ -75,11 +75,15 @@ function buildRuntimeConfig() {
 	const apiBaseUrl = (process.env.PERMISSA_API_BASE_URL ?? "")
 		.trim()
 		.replace(/\/$/, "")
+	const dashboardUrl = (process.env.PERMISSA_DASHBOARD_URL ?? "")
+		.trim()
+		.replace(/\/$/, "")
 	const raw = (process.env.PERMISSA_FIREBASE_WEB_CONFIG ?? "").trim()
 
 	if (!raw) {
 		return {
 			apiBaseUrl,
+			dashboardUrl: dashboardUrl || null,
 			firebase: null,
 			configError:
 				"PERMISSA_FIREBASE_WEB_CONFIG is not set on this service, so sign-in is disabled.",
@@ -94,6 +98,7 @@ function buildRuntimeConfig() {
 		)
 		return {
 			apiBaseUrl,
+			dashboardUrl: dashboardUrl || null,
 			firebase: null,
 			configError: "The console configuration is invalid and was not served.",
 		}
@@ -106,6 +111,7 @@ function buildRuntimeConfig() {
 		console.error("PERMISSA_FIREBASE_WEB_CONFIG is not valid JSON.")
 		return {
 			apiBaseUrl,
+			dashboardUrl: dashboardUrl || null,
 			firebase: null,
 			configError: "PERMISSA_FIREBASE_WEB_CONFIG is not valid JSON.",
 		}
@@ -114,6 +120,7 @@ function buildRuntimeConfig() {
 	if (!parsed || typeof parsed !== "object") {
 		return {
 			apiBaseUrl,
+			dashboardUrl: dashboardUrl || null,
 			firebase: null,
 			configError: "PERMISSA_FIREBASE_WEB_CONFIG is not a JSON object.",
 		}
@@ -134,13 +141,19 @@ function buildRuntimeConfig() {
 		)
 		return {
 			apiBaseUrl,
+			dashboardUrl: dashboardUrl || null,
 			firebase: null,
 			configError:
 				"PERMISSA_FIREBASE_WEB_CONFIG is missing: " + missing.join(", "),
 		}
 	}
 
-	return { apiBaseUrl, firebase, configError: null }
+	return {
+		apiBaseUrl,
+		dashboardUrl: dashboardUrl || null,
+		firebase,
+		configError: null,
+	}
 }
 
 const RUNTIME_CONFIG = buildRuntimeConfig()
@@ -283,6 +296,11 @@ server.listen(PORT, HOST, () => {
 			? "Sign-in enabled for Firebase project " +
 					RUNTIME_CONFIG.firebase.projectId
 			: "Sign-in DISABLED: " + RUNTIME_CONFIG.configError,
+	)
+	console.log(
+		RUNTIME_CONFIG.dashboardUrl
+			? "Dashboard handoff target: " + RUNTIME_CONFIG.dashboardUrl
+			: "Dashboard URL not set; the Open Dashboard button stays hidden.",
 	)
 })
 
