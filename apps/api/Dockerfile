@@ -20,11 +20,16 @@ RUN npm run build --workspace=@permissa/contracts \
 RUN test -f apps/api/dist/main.js \
  || (echo "Build did not produce apps/api/dist/main.js" >&2 && exit 1)
 
-# Load the complete Nest module graph without starting the HTTP server. This
-# catches invalid ESM specifiers and missing runtime packages during Cloud
-# Build, instead of shipping an image that crashes before binding PORT.
-RUN node --input-type=module \
-  --eval "await import('./apps/api/dist/app.module.js'); console.log('API module graph resolved')"
+# Instantiate the complete Nest provider graph under the production storage
+# policy without opening an HTTP listener. Constructing a Firestore client is
+# lazy and makes no network request here. This catches ESM/CommonJS mismatches,
+# missing runtime packages and startup-constructor failures during Cloud Build.
+RUN NODE_ENV=production \
+    FIRESTORE_PROJECT_ID=build-smoke-test \
+    FIRESTORE_DATABASE_ID=premissadb \
+    PERMISSA_REQUIRE_DURABLE_STORE=true \
+    node --input-type=module --eval \
+    "const { NestFactory } = await import('@nestjs/core'); const { AppModule } = await import('./apps/api/dist/app.module.js'); const app = await NestFactory.createApplicationContext(AppModule, { logger: false }); await app.close(); console.log('API production context initialized')"
 
 FROM node:20-slim
 ENV NODE_ENV=production

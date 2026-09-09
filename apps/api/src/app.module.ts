@@ -1,3 +1,4 @@
+import "./runtime-compat.js";
 import { Module } from "@nestjs/common";
 import { HealthController } from "./health/health.controller.js";
 import { AuthModule } from "./auth/auth.module.js";
