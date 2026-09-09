@@ -1,5 +1,13 @@
 name: Deploy
 
+# Option A topology:
+#   Operator console -> published by Google AI Studio (static, no secrets)
+#   API              -> this workflow, Cloud Run, us-central1
+#   Firestore rules  -> this workflow, database premissadb
+#
+# Every credential is attached as a Secret Manager reference. A literal env
+# value would be copied into Cloud Audit Logs, which cannot be redacted.
+
 on:
   push:
     branches: [main]
@@ -12,6 +20,11 @@ permissions:
 concurrency:
   group: deploy-production
   cancel-in-progress: false
+
+env:
+  GCP_REGION: us-central1
+  FIRESTORE_DATABASE_ID: premissadb
+  API_SERVICE: permissa-api
 
 jobs:
   deploy:
@@ -30,26 +43,48 @@ jobs:
           service_account: ${{ secrets.GCP_DEPLOY_SA }}
       - uses: google-github-actions/setup-gcloud@v2
 
+      - name: Fail fast on missing configuration
+        run: |
+          missing=""
+          [ -n "${{ secrets.GCP_PROJECT_ID }}" ] || missing="$missing GCP_PROJECT_ID"
+          [ -n "${{ secrets.ARTIFACT_REGISTRY }}" ] || missing="$missing ARTIFACT_REGISTRY"
+          [ -n "${{ vars.CONSOLE_ORIGIN }}" ] || missing="$missing CONSOLE_ORIGIN"
+          if [ -n "$missing" ]; then
+            echo "Missing required configuration:$missing" >&2
+            exit 1
+          fi
+
       - name: Build and push API image
         run: |
-          gcloud builds submit --tag "$IMAGE_API" --file apps/api/Dockerfile .
+          gcloud builds submit \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --tag "$IMAGE_API" \
+            --file apps/api/Dockerfile .
         env:
           IMAGE_API: ${{ secrets.ARTIFACT_REGISTRY }}/api:${{ github.sha }}
 
       - name: Deploy API revision
         run: |
-          gcloud run deploy permissa-api \
+          # ^;^ switches the delimiter to ';' so comma-bearing values such as
+          # the origin allowlist are not split into separate variables.
+          gcloud run deploy "$API_SERVICE" \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
             --image "$IMAGE_API" \
-            --region us-central1 \
+            --region "$GCP_REGION" \
             --service-account permissa-api@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
-            --no-allow-unauthenticated
+            --allow-unauthenticated \
+            --timeout 300 \
+            --max-instances 3 \
+            --min-instances 0 \
+            --set-env-vars "^;^NODE_ENV=production;PERMISSA_ALLOW_DEV_TOKENS=false;PERMISSA_REQUIRE_DURABLE_STORE=true;FIRESTORE_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }};FIRESTORE_DATABASE_ID=$FIRESTORE_DATABASE_ID;GCP_REGION=$GCP_REGION;VERTEX_LOCATION=$GCP_REGION;PERMISSA_ALLOWED_ORIGINS=${{ vars.CONSOLE_ORIGIN }};GEMINI_ENABLED=true;PARALLEL_ENABLED=true;GRAFANA_MCP_ENABLED=false;RUN_ENTITY_CAP=50;RUN_PARALLEL_CALL_CAP=50;ENTITY_PARALLEL_CALL_CAP=3;RUN_DEADLINE_SECONDS=600;RUN_COST_CAP_USD=10.00;AGGREGATE_PREDEMO_CAP_USD=80;MAX_CONCURRENT_RUNS=1;USER_DAILY_RUN_LIMIT=3;GLOBAL_DAILY_RUN_LIMIT=25" \
+            --set-secrets "GEMINI_API_KEY=gemini-api-key:latest,PARALLEL_API_KEY=parallel-api-key:latest"
         env:
           IMAGE_API: ${{ secrets.ARTIFACT_REGISTRY }}/api:${{ github.sha }}
 
-      # The previous implementation ran
+      # The original implementation ran
       #   gcloud firestore databases update --quiet || true
-      # which deployed neither rules nor indexes and swallowed its own exit
-      # code, so the hardened rules were never actually shipped.
+      # which deployed neither rules nor indexes and swallowed its exit code,
+      # so the hardened rules were never actually shipped.
       - name: Install Firebase CLI
         run: npm install --global firebase-tools@13
 
@@ -60,13 +95,25 @@ jobs:
             --project "${{ secrets.GCP_PROJECT_ID }}" \
             --non-interactive
 
+      - name: Assert no plaintext secrets on the service spec
+        run: |
+          gcloud run services describe "$API_SERVICE" \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --region "$GCP_REGION" \
+            --format 'value(spec.template.spec.containers[0].env)' > env.txt
+          if grep -Eiq '(API_KEY|TOKEN|SECRET|PASSWORD)=[^ ]' env.txt; then
+            echo "A credential appears as a literal value on the service spec." >&2
+            exit 1
+          fi
+
       - name: Verify API health
         run: |
-          URL="$(gcloud run services describe permissa-api \
-            --region us-central1 --format 'value(status.url)')"
-          TOKEN="$(gcloud auth print-identity-token)"
-          curl --fail --silent --show-error --max-time 30 \
-            -H "Authorization: Bearer $TOKEN" "$URL/health"
+          URL="$(gcloud run services describe "$API_SERVICE" \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --region "$GCP_REGION" --format 'value(status.url)')"
+          # The API sets a global 'v1' prefix, so /health does not exist.
+          curl --fail --silent --show-error --max-time 30 "$URL/v1/health"
+          echo "api_url=$URL" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Record release evidence
         run: echo "revision=${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
