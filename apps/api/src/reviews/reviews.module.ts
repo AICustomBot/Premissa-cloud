@@ -1,11 +1,12 @@
 import { Module } from "@nestjs/common";
-import { ReviewsController } from "./reviews.controller.js";
-import { ReviewsService } from "./reviews.service.js";
+import { AuthModule } from "../auth/auth.module.js";
 import { StorageModule } from "../storage/storage.module.js";
 import { ProjectsModule } from "../projects/projects.module.js";
+import { ReviewsController } from "./reviews.controller.js";
+import { ReviewsService } from "./reviews.service.js";
 
 @Module({
-  imports: [StorageModule, ProjectsModule],
+  imports: [AuthModule, StorageModule, ProjectsModule],
   controllers: [ReviewsController],
   providers: [ReviewsService],
   exports: [ReviewsService],

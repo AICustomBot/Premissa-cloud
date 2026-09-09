@@ -32,9 +32,6 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
-      # No `cache: npm` here. setup-node exits non-zero when it cannot find a
-      # lockfile, and this repository has none yet. This job only uses npm to
-      # install firebase-tools globally, so caching bought nothing anyway.
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -72,14 +69,17 @@ jobs:
 
       - name: Deploy API revision
         run: |
-          # ^;^ switches the delimiter to ';' so comma-bearing values such as
-          # the origin allowlist are not split into separate variables.
+          # Cloud Run IAM authentication cannot be satisfied by a browser.
+          # Disable that edge check without adding an allUsers IAM binding;
+          # Firebase bearer-token authorization remains enforced in the API.
+          # ^;^ switches the env delimiter so comma-bearing origin lists remain
+          # one variable rather than being split by gcloud.
           gcloud run deploy "$API_SERVICE" \
             --project "${{ secrets.GCP_PROJECT_ID }}" \
             --image "$IMAGE_API" \
             --region "$GCP_REGION" \
             --service-account permissa-api@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
-            --allow-unauthenticated \
+            --no-invoker-iam-check \
             --timeout 300 \
             --max-instances 3 \
             --min-instances 0 \
@@ -88,10 +88,6 @@ jobs:
         env:
           IMAGE_API: ${{ secrets.ARTIFACT_REGISTRY }}/api:${{ github.sha }}
 
-      # The original implementation ran
-      #   gcloud firestore databases update --quiet || true
-      # which deployed neither rules nor indexes and swallowed its exit code,
-      # so the hardened rules were never actually shipped.
       - name: Install Firebase CLI
         run: npm install --global firebase-tools@13
 
@@ -118,7 +114,6 @@ jobs:
           URL="$(gcloud run services describe "$API_SERVICE" \
             --project "${{ secrets.GCP_PROJECT_ID }}" \
             --region "$GCP_REGION" --format 'value(status.url)')"
-          # The API sets a global 'v1' prefix, so /health does not exist.
           curl --fail --silent --show-error --max-time 30 "$URL/v1/health"
           echo "api_url=$URL" >> "$GITHUB_STEP_SUMMARY"
 
