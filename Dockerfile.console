@@ -1,0 +1,63 @@
+# syntax=docker/dockerfile:1
+
+# PERMISSA operator console image.
+#
+# The console is the root Vite application (index.html + studio/), served in
+# production by server.js, which imports only Node built-ins. This mirrors the
+# API topology deliberately: built by Cloud Build, run on Cloud Run, and
+# carrying no credentials of any kind.
+#
+# VITE_API_BASE_URL is baked into the bundle at build time and is therefore
+# public by construction. AGENTS.md prohibits secrets in client bundles, so
+# this build arg must only ever hold the public API origin.
+
+FROM node:20-slim AS build
+WORKDIR /app
+
+ARG VITE_API_BASE_URL
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+
+# Fail here rather than shipping a console whose API base URL is empty. The
+# client would otherwise build successfully and then fail at runtime with a
+# configuration error on every request.
+RUN test -n "$VITE_API_BASE_URL" \
+ || (echo "VITE_API_BASE_URL build arg is required." >&2 && exit 1)
+
+# Only console build inputs are copied. The apps/ and packages/ workspaces are
+# intentionally excluded so the console cannot import server-side code, policy
+# thresholds, or the evidence gate.
+COPY package.json package-lock.json tsconfig.base.json vite.config.ts index.html ./
+COPY studio ./studio
+
+# npm install rather than npm ci: the root lockfile describes the whole
+# monorepo, while this build context omits the workspace directories on
+# purpose. CI still installs from the lockfile for full-monorepo checks.
+RUN npm install --no-audit --no-fund
+
+RUN npm run build
+
+RUN test -f dist/index.html \
+ || (echo "vite build did not produce dist/index.html" >&2 && exit 1)
+
+# Last line of defence for the no-secrets-in-client-bundles rule. A Google API
+# key, a PEM private key, or a provider token literal in dist/ fails the build
+# instead of reaching a public URL.
+RUN if grep -rIlE '(AIza[0-9A-Za-z_-]{30,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|(PARALLEL|GRAFANA|GEMINI)_[A-Z_]*(KEY|TOKEN)"?[:=][^,}]{12,})' dist; then \
+      echo "A credential-shaped value is present in the client bundle." >&2; \
+      exit 1; \
+    fi
+
+FROM node:20-slim
+ENV NODE_ENV=production
+ENV PORT=8080
+WORKDIR /app
+RUN useradd --uid 10001 --create-home permissa
+
+# No node_modules in the runtime layer: server.js uses only node: built-ins,
+# so the served surface is the static bundle and nothing else.
+COPY --from=build --chown=permissa:permissa /app/dist ./dist
+COPY --chown=permissa:permissa server.js ./server.js
+
+USER permissa
+EXPOSE 8080
+CMD ["node", "server.js"]

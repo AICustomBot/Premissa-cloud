@@ -1,0 +1,30 @@
+# Build config for the PERMISSA operator console image.
+#
+# As with the API, `gcloud builds submit --tag` cannot be used: the Dockerfile
+# needs a build arg, so an explicit docker build step is required.
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: build
+    args:
+      - build
+      - --file
+      - Dockerfile.console
+      - --build-arg
+      - VITE_API_BASE_URL=${_API_BASE_URL}
+      - --tag
+      - ${_IMAGE}
+      - .
+
+images:
+  - ${_IMAGE}
+
+options:
+  # A fresh project has no default Cloud Build logs bucket. Without this the
+  # build fails on log delivery rather than on anything to do with code.
+  logging: CLOUD_LOGGING_ONLY
+
+  # Deliberately no machineType: high-CPU types have no default quota and are
+  # rejected with FAILED_PRECONDITION before a build record exists.
+
+timeout: 1200s

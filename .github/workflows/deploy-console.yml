@@ -1,0 +1,139 @@
+name: Deploy Console
+
+# Option A console topology:
+#   Operator console -> this workflow, Cloud Run, us-central1, no secrets
+#   API              -> deploy.yml, Cloud Run, us-central1
+#   Firestore        -> deploy-firestore.yml, manual only
+#
+# The console was previously going to be published from Google AI Studio. That
+# surface injects and pins managed app-level environment values that cannot be
+# removed, which conflicts with AGENTS.md: the console must carry no secrets.
+# It needs exactly one public value, so it is deployed here instead.
+#
+# Path filters keep this independent of the API. A console change must never
+# rebuild, replace, or roll back a healthy permissa-api revision.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "studio/**"
+      - "index.html"
+      - "vite.config.ts"
+      - "server.js"
+      - "Dockerfile.console"
+      - "cloudbuild.console.yaml"
+      - ".github/workflows/deploy-console.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-console-production
+  cancel-in-progress: false
+
+env:
+  GCP_REGION: us-central1
+  API_SERVICE: permissa-api
+  CONSOLE_SERVICE: permissa-console
+
+jobs:
+  deploy-console:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Fail fast on missing configuration
+        run: |
+          missing=""
+          [ -n "${{ secrets.GCP_PROJECT_ID }}" ] || missing="$missing GCP_PROJECT_ID"
+          [ -n "${{ secrets.ARTIFACT_REGISTRY }}" ] || missing="$missing ARTIFACT_REGISTRY"
+          if [ -n "$missing" ]; then
+            echo "Missing required configuration:$missing" >&2
+            exit 1
+          fi
+
+      # Resolved from the live service rather than a hand-copied literal, so
+      # the console can never be built against a stale or wrong API origin.
+      - name: Resolve API base URL from the deployed service
+        id: api
+        run: |
+          URL="$(gcloud run services describe "$API_SERVICE" \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --region "$GCP_REGION" \
+            --format 'value(status.url)')"
+          if [ -z "$URL" ]; then
+            echo "Could not resolve the $API_SERVICE URL. Deploy the API first." >&2
+            exit 1
+          fi
+          # Refuse to publish a console pointed at an unhealthy API.
+          curl --fail --silent --show-error --max-time 30 "$URL/v1/health" > /dev/null
+          echo "base_url=$URL/v1" >> "$GITHUB_OUTPUT"
+          echo "Resolved API base URL: $URL/v1"
+
+      - name: Build and push console image
+        run: |
+          gcloud builds submit \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --region "$GCP_REGION" \
+            --config cloudbuild.console.yaml \
+            --substitutions "_IMAGE=$IMAGE_CONSOLE,_API_BASE_URL=${{ steps.api.outputs.base_url }}" \
+            .
+        env:
+          IMAGE_CONSOLE: ${{ secrets.ARTIFACT_REGISTRY }}/console:${{ github.sha }}
+
+      - name: Deploy console revision
+        run: |
+          gcloud run deploy "$CONSOLE_SERVICE" \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --image "$IMAGE_CONSOLE" \
+            --region "$GCP_REGION" \
+            --service-account permissa-console@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
+            --no-invoker-iam-check \
+            --port 8080 \
+            --timeout 60 \
+            --max-instances 3 \
+            --min-instances 0 \
+            --clear-secrets
+        env:
+          IMAGE_CONSOLE: ${{ secrets.ARTIFACT_REGISTRY }}/console:${{ github.sha }}
+
+      - name: Assert the console carries no secrets
+        run: |
+          gcloud run services describe "$CONSOLE_SERVICE" \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --region "$GCP_REGION" \
+            --format 'yaml(spec.template.spec.containers[0].env)' > console-env.yaml
+          if grep -Eiq '(API_KEY|TOKEN|SECRET|PASSWORD|PRIVATE_KEY)' console-env.yaml; then
+            echo "The console service spec references a credential. It must hold none." >&2
+            cat console-env.yaml >&2
+            exit 1
+          fi
+
+      - name: Verify console and report CORS state
+        run: |
+          URL="$(gcloud run services describe "$CONSOLE_SERVICE" \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --region "$GCP_REGION" \
+            --format 'value(status.url)')"
+          curl --fail --silent --show-error --max-time 30 "$URL/_healthz" > /dev/null
+          curl --fail --silent --show-error --max-time 30 "$URL/" > /dev/null
+          {
+            echo "console_url=$URL"
+            echo "api_base_url=${{ steps.api.outputs.base_url }}"
+            echo "revision=${{ github.sha }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ vars.CONSOLE_ORIGIN }}" != "$URL" ]; then
+            echo "::warning::CONSOLE_ORIGIN is '${{ vars.CONSOLE_ORIGIN }}' but the console origin is '$URL'. Browser calls will fail CORS until CONSOLE_ORIGIN is set to that value and Deploy API is run once."
+          fi
