@@ -5,38 +5,32 @@
  * ClientPage.tsx, firestore-sync.ts and presence-sync.ts, so it cannot be
  * removed until those are rewired onto src/lib/auth.ts and the API. What it
  * can stop doing is leaking a credential-shaped literal into the client
- * bundle.
+ * bundle, and crashing the server render.
  *
- * It used to import firebase-applet-config.json, which carried a real
- * AIza-prefixed Firebase web API key. Next inlined that into the / chunk and
- * the container build failed at the secret gate -- correctly, because Gemini
- * API keys share the AIza prefix and that guard is the last thing standing
- * between a genuine secret and a public URL.
+ * History, so the next reader does not undo either fix:
  *
- * Two honest consequences of removing the key, neither of which is a
- * regression:
+ *   1. It used to import firebase-applet-config.json, which carried a real
+ *      AIza-prefixed Firebase web API key. Next inlined that into the /
+ *      chunk and the container build failed at the secret gate -- correctly,
+ *      because Gemini API keys share the AIza prefix and that guard is the
+ *      last thing standing between a genuine secret and a public URL.
+ *   2. Removing the key then broke the server render: firebase/auth asserts
+ *      on apiKey inside initializeAuth, so getAuth(app) threw
+ *      auth/invalid-api-key at module load and GET / answered 500. Hence the
+ *      signed-out stand-in below rather than a real Auth instance.
  *
- *   1. No Firebase operation through this module can authenticate. It could
- *      not before either: infra/firestore/firestore.rules denies every read
- *      and write, and every caller in firestore-sync.ts and presence-sync.ts
- *      already swallows the rejection with console.warn. The dashboard's real
- *      session is established by src/lib/auth.ts against a separately named
- *      Firebase app configured at runtime from /api/config.
- *   2. Sign-in through this module is gone. That is the intended topology:
- *      permissa-console is the login surface, and the dashboard receives its
- *      identity through the custom-token handoff at /auth/callback.
+ * The dashboard does not own a Firebase session. permissa-console is the
+ * login surface; it forwards an authenticated operator here through the
+ * custom-token handoff at /auth/callback, and src/lib/auth.ts establishes
+ * the real session against a separately named Firebase app configured at
+ * runtime from /api/config.
  *
  * The identifiers below are not secrets. A project id, app id, sender id and
  * auth domain are shipped to every browser by any Firebase app; they are
  * inlined only so this module keeps a stable shape until it is deleted.
  */
 import { initializeApp, getApps, getApp } from "firebase/app";
-import {
-  getAuth,
-  GoogleAuthProvider,
-  signOut,
-  type User,
-} from "firebase/auth";
+import { GoogleAuthProvider, type Auth, type User } from "firebase/auth";
 import { getFirestore, doc, getDocFromServer } from "firebase/firestore";
 
 /**
@@ -61,7 +55,57 @@ const FIRESTORE_DATABASE_ID = "premissadb";
 const app = getApps().length > 0 ? getApp() : initializeApp(legacyAppConfig);
 
 export const db = getFirestore(app, FIRESTORE_DATABASE_ID);
-export const auth = getAuth(app);
+
+type AuthStateObserver =
+  | ((user: User | null) => void)
+  | { next?: (user: User | null) => void };
+
+function notifySignedOut(observer: AuthStateObserver): () => void {
+  const next = typeof observer === "function" ? observer : observer?.next;
+  if (typeof next === "function") {
+    // Asynchronous, matching the real SDK: subscribers must not be invoked
+    // during their own subscribe call.
+    void Promise.resolve().then(() => next(null));
+  }
+  return () => {};
+}
+
+/**
+ * A permanently signed-out stand-in for Auth.
+ *
+ * Constructing a real Auth instance is impossible without an API key, and
+ * attempting it takes the server render down with it. This exposes the only
+ * surface the legacy callers touch -- currentUser, the two change observers
+ * and signOut -- and reports the truth: nobody is signed in through this app.
+ *
+ * firebase/auth's modular onAuthStateChanged is a thin delegation to
+ * auth.onAuthStateChanged, so ClientPage.tsx's subscription resolves normally
+ * and receives null.
+ *
+ * Consequence, and it is the desired one: every function in firestore-sync.ts
+ * and presence-sync.ts early-returns on !auth.currentUser, so they no-op
+ * rather than firing writes at a deny-all ruleset and swallowing the
+ * rejection.
+ */
+const signedOutAuth = {
+  app,
+  name: app.name,
+  currentUser: null as User | null,
+  languageCode: null,
+  tenantId: null,
+  onAuthStateChanged: (observer: AuthStateObserver) =>
+    notifySignedOut(observer),
+  onIdTokenChanged: (observer: AuthStateObserver) => notifySignedOut(observer),
+  beforeAuthStateChanged: () => () => {},
+  signOut: async () => {},
+};
+
+export const auth = signedOutAuth as unknown as Auth;
+
+/**
+ * Inert. Kept only so the module's export shape stays stable until it is
+ * deleted; no sign-in flow runs on the dashboard.
+ */
 export const googleProvider = new GoogleAuthProvider();
 
 export enum OperationType {
@@ -150,9 +194,12 @@ export async function signInWithGoogle(): Promise<User | null> {
 }
 
 /**
- * Signing out of the legacy app is a no-op in practice, since it never holds a
- * session. src/lib/auth.ts owns the real one.
+ * This app never holds a session, so there is nothing to tear down. The real
+ * sign-out is signOutOfApp in src/lib/auth.ts.
  */
 export async function signOutUser(): Promise<void> {
-  await signOut(auth);
+  console.warn(
+    "signOutUser touched the legacy Firebase layer, which holds no session. " +
+      "Use signOutOfApp from src/lib/auth.ts.",
+  );
 }
