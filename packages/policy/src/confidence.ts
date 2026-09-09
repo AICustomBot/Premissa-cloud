@@ -2,7 +2,7 @@ import {
   CLEARED_MIN_CONFIDENCE,
   CONFIDENCE_FORMULA_VERSION,
   CONFLICT_SCORE_CAP,
-} from "./versions";
+} from "./versions.js";
 
 export type AuthorityPattern =
   | "TIER_1_APPLICABLE"
@@ -19,7 +19,6 @@ export type IndependencePattern =
   | "DUPLICATE";
 
 export type MatchQuality = "EXACT_CORROBORATED" | "STRONG" | "PARTIAL" | "WEAK";
-
 export type ContextQuality = "COMPLETE" | "MINOR_GAP" | "MATERIAL_GAP";
 
 export type ConfidenceInput = {
@@ -84,7 +83,6 @@ const CONTEXT: Record<ContextQuality, number> = {
 export const bandFor = (score: number): "LOW" | "MEDIUM" | "HIGH" =>
   score >= CLEARED_MIN_CONFIDENCE ? "HIGH" : score >= 60 ? "MEDIUM" : "LOW";
 
-/** Deterministic. Model output never contributes a score directly. */
 export const computeConfidence = (input: ConfidenceInput): ConfidenceOutput => {
   const factors = {
     authority: AUTHORITY[input.authority],

@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { IsoDateTime } from "./common";
-import { ClaimType, ConfidenceBand, ReasonCode, SourceTier } from "./enums";
-import { CitationId, EntityId, ResearchTaskId } from "./ids";
+import { IsoDateTime } from "./common.js";
+import { ClaimType, ConfidenceBand, ReasonCode, SourceTier } from "./enums.js";
+import { CitationId, EntityId, ResearchTaskId } from "./ids.js";
 
 export const Citation = z.object({
   id: CitationId,

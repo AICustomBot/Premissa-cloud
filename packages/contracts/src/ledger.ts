@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { IsoDateTime } from "./common";
-import { LedgerEntryId, OrganizationId, ProjectId, RunId } from "./ids";
+import { IsoDateTime } from "./common.js";
+import { LedgerEntryId, OrganizationId, ProjectId, RunId } from "./ids.js";
 
 export const ProviderType = z.enum([
   "PARALLEL_SEARCH",

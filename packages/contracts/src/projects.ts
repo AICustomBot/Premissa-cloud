@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { IsoDateTime } from "./common";
-import { Jurisdiction, Role } from "./enums";
-import { OrganizationId, ProjectId, Uuid } from "./ids";
+import { IsoDateTime } from "./common.js";
+import { Jurisdiction, Role } from "./enums.js";
+import { OrganizationId, ProjectId, Uuid } from "./ids.js";
 
 export const Organization = z.object({
   id: OrganizationId,

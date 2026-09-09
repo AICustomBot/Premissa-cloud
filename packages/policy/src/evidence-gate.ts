@@ -2,8 +2,11 @@ import {
   computeConfidence,
   type ConfidenceInput,
   type ConfidenceOutput,
-} from "./confidence";
-import { CLEARED_MIN_CONFIDENCE, EVIDENCE_POLICY_VERSION } from "./versions";
+} from "./confidence.js";
+import {
+  CLEARED_MIN_CONFIDENCE,
+  EVIDENCE_POLICY_VERSION,
+} from "./versions.js";
 
 export type ProposedStatus =
   | "RESEARCH_CLEARED"
@@ -32,10 +35,6 @@ export type GateDecision = {
 
 const INSUFFICIENT: ProposedStatus = "INSUFFICIENT_EVIDENCE";
 
-/**
- * Deterministic admissibility. The model proposes; this function decides.
- * Downgrades are always safe: never upgrade a status here.
- */
 export const evaluateEvidenceGate = (input: GateInput): GateDecision => {
   const confidence = computeConfidence(input.confidence);
   const reasonCodes: string[] = [
@@ -105,7 +104,6 @@ export const evaluateEvidenceGate = (input: GateInput): GateDecision => {
       } else {
         reasonCodes.push("EVIDENCE_WEAK");
       }
-      // Automation may only propose BLOCKED; a person confirms it.
       return decision(
         eligible ? "BLOCKED" : INSUFFICIENT,
         eligible,

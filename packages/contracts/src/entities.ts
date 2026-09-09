@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { Versioned } from "./common";
-import { EntityType } from "./enums";
-import { EntityId, SceneId, ScriptVersionId } from "./ids";
+import { Versioned } from "./common.js";
+import { EntityType } from "./enums.js";
+import { EntityId, SceneId, ScriptVersionId } from "./ids.js";
 
 export const EntityMention = z.object({
   sceneId: SceneId,

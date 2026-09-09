@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { IsoDateTime, Versioned } from "./common";
-import { FindingStatus, Jurisdiction, ReasonCode, RunState } from "./enums";
+import { IsoDateTime, Versioned } from "./common.js";
+import { FindingStatus, Jurisdiction, ReasonCode, RunState } from "./enums.js";
 import {
   EntityId,
   FindingId,
@@ -8,8 +8,8 @@ import {
   ProjectId,
   RunId,
   ScriptVersionId,
-} from "./ids";
-import { ConfidenceResult } from "./evidence";
+} from "./ids.js";
+import { ConfidenceResult } from "./evidence.js";
 
 export const CreateRunRequest = z.object({
   projectId: ProjectId,

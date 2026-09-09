@@ -9,21 +9,21 @@ import {
   type GateInput,
   type GateDecision,
   type ProposedStatus,
-} from "./evidence-gate";
+} from "./evidence-gate.js";
 import {
   type AuthorityPattern,
   type IndependencePattern,
   type ConfidenceInput,
-} from "./confidence";
+} from "./confidence.js";
 import {
   evaluateLegalRisk,
   type EntityRiskInput,
   type LegalRiskAnalysis,
-} from "./legal-pillars";
+} from "./legal-pillars.js";
 import {
   evaluateEvidenceMatrix,
   type EvidenceMatrixEvaluation,
-} from "./evidence-matrix";
+} from "./evidence-matrix.js";
 
 export interface SynthesisRequest {
   runId: string;
@@ -46,18 +46,8 @@ export interface SynthesisResult {
   finding: Finding;
 }
 
-/**
- * Deterministic Evidence Gate & Policy Synthesis Engine.
- * Strictly adheres to constitutional invariants:
- * 1. Models NEVER assign clearance statuses or confidence scores directly.
- * 2. No RESEARCH_CLEARED status without a passing evidence gate and confidence score >= 85.
- * 3. No final BLOCKED status without professional reviewer confirmation.
- * 4. Optimistic concurrency control (version: 1) and snapshot policy versions.
- */
 export function synthesizeFinding(request: SynthesisRequest): SynthesisResult {
   const { entity, citations } = request;
-
-  // 1. Analyze Citation Authority & Independence Patterns
   const tier1Citations = citations.filter((c) => c.sourceTier === "TIER_1");
   const tier2Citations = citations.filter((c) => c.sourceTier === "TIER_2");
   const hasReachable = citations.some((c) => c.reachable);
@@ -69,7 +59,6 @@ export function synthesizeFinding(request: SynthesisRequest): SynthesisResult {
     authorityPattern = "TIER_1_APPLICABLE";
     independencePattern = "TIER_1_PATH";
   } else if (tier2Citations.length >= 2) {
-    // Check if at least two Tier 2 citations are independent (distinct domain and owner)
     let foundIndependent = false;
     let foundSameOwner = false;
 
@@ -113,7 +102,6 @@ export function synthesizeFinding(request: SynthesisRequest): SynthesisResult {
     independencePattern = "SINGLE_SOURCE";
   }
 
-  // 2. Evaluate Legal Risk across the Four Pillars
   const riskInput: EntityRiskInput = {
     entityType: entity.type,
     canonicalName: entity.canonicalName,
@@ -125,8 +113,6 @@ export function synthesizeFinding(request: SynthesisRequest): SynthesisResult {
   };
 
   const riskAnalysis = evaluateLegalRisk(riskInput);
-
-  // 3. Formulate Deterministic Confidence Input
   const hasAdmissibleCitation = citations.length > 0 && hasReachable;
   const citationUnreachable = citations.length > 0 && !hasReachable;
 
@@ -144,7 +130,6 @@ export function synthesizeFinding(request: SynthesisRequest): SynthesisResult {
     evidenceExpired: false,
   };
 
-  // 4. Formulate Evidence Synthesis Matrix
   const matrixResult = evaluateEvidenceMatrix({
     entity,
     citations,
@@ -154,7 +139,6 @@ export function synthesizeFinding(request: SynthesisRequest): SynthesisResult {
     budgetLimited: Boolean(request.budgetLimited),
   });
 
-  // 5. Propose Status Based on Legal Pillar Findings
   let proposedStatus: ProposedStatus = "INSUFFICIENT_EVIDENCE";
 
   if (riskAnalysis.severeContext && riskAnalysis.strongConflict) {
@@ -167,7 +151,6 @@ export function synthesizeFinding(request: SynthesisRequest): SynthesisResult {
     proposedStatus = "RESEARCH_CLEARED";
   }
 
-  // 6. Submit to Deterministic Evidence Gate
   const gateInput: GateInput = {
     proposedStatus,
     confidence: confidenceInput,
@@ -179,8 +162,6 @@ export function synthesizeFinding(request: SynthesisRequest): SynthesisResult {
   };
 
   const gateDecision = evaluateEvidenceGate(gateInput);
-
-  // 7. Map Reason Codes safely to ReasonCode enum
   const allRawReasonCodes = [...gateDecision.reasonCodes];
   if (
     matrixResult.primaryReasonCode &&
@@ -196,7 +177,6 @@ export function synthesizeFinding(request: SynthesisRequest): SynthesisResult {
     })
     .filter((code): code is typeof ReasonCode._type => code !== null);
 
-  // 8. Emit Optimistically Concurrency-Controlled Finding Record
   const now = new Date().toISOString();
   const findingId = request.findingId ?? generateUuidV7Fallback();
 
@@ -237,9 +217,6 @@ export function synthesizeFinding(request: SynthesisRequest): SynthesisResult {
   };
 }
 
-/**
- * Server-side UUIDv7 fallback generator for unique Finding identifiers.
- */
 function generateUuidV7Fallback(): string {
   const timestamp = Date.now();
   const hexTime = timestamp.toString(16).padStart(12, "0");

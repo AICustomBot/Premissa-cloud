@@ -1,5 +1,5 @@
 import { EntityType } from "@permissa/contracts";
-import type { MatchQuality, ContextQuality } from "./confidence";
+import type { MatchQuality, ContextQuality } from "./confidence.js";
 
 export type LegalPillarType =
   | "DEFAMATION_FALSE_LIGHT"
@@ -35,14 +35,6 @@ export interface EntityRiskInput {
   sceneContexts?: string[];
 }
 
-/**
- * Deterministic Four-Pillar Legal Risk Evaluator.
- * Encapsulates the four core clearance pillars without relying on LLM score assignments:
- * 1. Defamation & False Light (living vs. deceased persons, criminal/misconduct portrayals)
- * 2. Trademark Dilution & Commercial Likelihood of Confusion (tarnishment vs. nominative fair use)
- * 3. Right of Publicity (commercial exploitation vs. protected First Amendment expression)
- * 4. Copyright & Literary Option (underlying property chain of title, option verification)
- */
 export function evaluateLegalRisk(input: EntityRiskInput): LegalRiskAnalysis {
   switch (input.entityType) {
     case "PERSON_CHARACTER":
@@ -56,11 +48,7 @@ export function evaluateLegalRisk(input: EntityRiskInput): LegalRiskAnalysis {
   }
 }
 
-/**
- * Pillar 1 & Pillar 3: Defamation & False Light / Right of Publicity
- */
 function evaluatePersonRisk(input: EntityRiskInput): LegalRiskAnalysis {
-  // If historical/deceased, US tort law extinguishes individual defamation actions post-mortem.
   if (input.isDeceasedHistorical) {
     return {
       pillar: "DEFAMATION_FALSE_LIGHT",
@@ -77,7 +65,6 @@ function evaluatePersonRisk(input: EntityRiskInput): LegalRiskAnalysis {
     };
   }
 
-  // Commercial tie-in or unauthorized endorsement -> Right of Publicity pillar
   if (input.hasCommercialExploitation) {
     return {
       pillar: "RIGHT_OF_PUBLICITY",
@@ -96,7 +83,6 @@ function evaluatePersonRisk(input: EntityRiskInput): LegalRiskAnalysis {
     };
   }
 
-  // Defamatory allegations against living person (crime, moral turpitude, professional misconduct)
   if (input.hasDefamatoryAllegations) {
     return {
       pillar: "DEFAMATION_FALSE_LIGHT",
@@ -114,7 +100,6 @@ function evaluatePersonRisk(input: EntityRiskInput): LegalRiskAnalysis {
     };
   }
 
-  // Standard non-defamatory portrayal of identifiable living person
   return {
     pillar: "DEFAMATION_FALSE_LIGHT",
     severeContext: false,
@@ -130,11 +115,7 @@ function evaluatePersonRisk(input: EntityRiskInput): LegalRiskAnalysis {
   };
 }
 
-/**
- * Pillar 2: Trademark Dilution & Commercial Likelihood of Confusion
- */
 function evaluateBrandRisk(input: EntityRiskInput): LegalRiskAnalysis {
-  // Product tarnishment / defamatory product defect portrayal
   if (input.hasTarnishingPortrayal) {
     return {
       pillar: "TRADEMARK_DILUTION_CONFUSION",
@@ -153,7 +134,6 @@ function evaluateBrandRisk(input: EntityRiskInput): LegalRiskAnalysis {
     };
   }
 
-  // Commercial exploitation or counterfeit confusion requiring clearance
   if (
     input.hasCommercialExploitation ||
     (!input.isNominativeFairUse && input.isRegisteredTrademark)
@@ -175,7 +155,6 @@ function evaluateBrandRisk(input: EntityRiskInput): LegalRiskAnalysis {
     };
   }
 
-  // Nominative fair use / incidental verbal reference
   return {
     pillar: "TRADEMARK_DILUTION_CONFUSION",
     severeContext: false,
@@ -191,11 +170,7 @@ function evaluateBrandRisk(input: EntityRiskInput): LegalRiskAnalysis {
   };
 }
 
-/**
- * Pillar 4: Copyright & Underlying Literary Property Option Verification
- */
 function evaluateTitleRisk(input: EntityRiskInput): LegalRiskAnalysis {
-  // Underlying option agreement or active copyrighted work match
   if (input.hasOptionAgreementRequired || input.isRegisteredCopyrightWork) {
     return {
       pillar: "COPYRIGHT_LITERARY_OPTION",
@@ -214,7 +189,6 @@ function evaluateTitleRisk(input: EntityRiskInput): LegalRiskAnalysis {
     };
   }
 
-  // Generic, non-protectable title in public domain
   return {
     pillar: "COPYRIGHT_LITERARY_OPTION",
     severeContext: false,

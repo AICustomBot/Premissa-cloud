@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { IsoDateTime } from "./common";
-import { OrganizationId, ProjectId, RunId } from "./ids";
+import { IsoDateTime } from "./common.js";
+import { OrganizationId, ProjectId, RunId } from "./ids.js";
 
 /** Safe projection for the browser timeline. Content-free by contract. */
 export const ActivityEventType = z.enum([

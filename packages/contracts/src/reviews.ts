@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { IsoDateTime } from "./common";
-import { FindingStatus, InvitationState, Role } from "./enums";
-import { FindingId, ProjectId, ReportId, ReviewId, RunId } from "./ids";
+import { IsoDateTime } from "./common.js";
+import { FindingStatus, InvitationState, Role } from "./enums.js";
+import { FindingId, ProjectId, ReportId, ReviewId, RunId } from "./ids.js";
 
 export const CreateInvitationRequest = z.object({
   projectId: ProjectId,

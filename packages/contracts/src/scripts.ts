@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { IsoDateTime, Versioned } from "./common";
+import { IsoDateTime, Versioned } from "./common.js";
 import {
   DeltaChangeType,
   EntityType,
@@ -8,7 +8,7 @@ import {
   RunState,
   SourceType,
   UploadState,
-} from "./enums";
+} from "./enums.js";
 import {
   EntityId,
   FindingId,
@@ -17,7 +17,7 @@ import {
   RunId,
   SceneId,
   ScriptVersionId,
-} from "./ids";
+} from "./ids.js";
 
 export const CreateUploadRequest = z.object({
   projectId: ProjectId.optional(),

@@ -1,6 +1,6 @@
 import { CanonicalEntity, Citation, ReasonCode } from "@permissa/contracts";
-import type { LegalRiskAnalysis } from "./legal-pillars";
-import type { MatchQuality } from "./confidence";
+import type { LegalRiskAnalysis } from "./legal-pillars.js";
+import type { MatchQuality } from "./confidence.js";
 
 export type LegalClaimCategory =
   | "TRADEMARK_REGISTRY"
@@ -46,20 +46,11 @@ export interface EvidenceMatrixEvaluation {
   evaluationNotes: string;
 }
 
-/**
- * Deterministic Evidence Synthesis Matrix.
- * Enforces constitutional clearance standards:
- * - Only verified legal claims (backed by Tier 1 registries or two independent Tier 2 sources) can substantiate RESEARCH_CLEARED.
- * - Tier 3 discovery sources are strictly unverified for clearance admissibility.
- * - Any contradicted claims or unresolved ownership conflicts immediately disqualify an entity from RESEARCH_CLEARED.
- */
 export function evaluateEvidenceMatrix(
   input: EvidenceMatrixInput,
 ): EvidenceMatrixEvaluation {
   const { entity, citations, riskAnalysis } = input;
   const claims: ClaimVerificationResult[] = [];
-
-  // Filter and classify citations
   const reachableCitations = citations.filter((c) => c.reachable);
   const tier1Citations = reachableCitations.filter(
     (c) => c.sourceTier === "TIER_1",
@@ -71,7 +62,6 @@ export function evaluateEvidenceMatrix(
     (c) => c.sourceTier === "TIER_3",
   );
 
-  // Check independence among Tier 2 citations
   let twoIndependentTier2 = false;
   if (tier2Citations.length >= 2) {
     for (let i = 0; i < tier2Citations.length; i++) {
@@ -95,15 +85,12 @@ export function evaluateEvidenceMatrix(
   }
 
   const hasHighTierAuthority = tier1Citations.length > 0 || twoIndependentTier2;
-
-  // 1. Evaluate Primary Identification / Registration Claim
   let primaryClaim: ClaimVerificationResult;
 
   switch (entity.type) {
     case "BRAND_BUSINESS_PRODUCT": {
       const claimCategory: LegalClaimCategory = "TRADEMARK_REGISTRY";
       const claimSummary = `Active trademark and business entity registration status for "${entity.canonicalName}".`;
-
       if (citations.length === 0) {
         primaryClaim = {
           claimCategory,
@@ -116,8 +103,7 @@ export function evaluateEvidenceMatrix(
           isReachableAndFresh: false,
           isIndependent: false,
           rejectionReason: "EVIDENCE_MISSING",
-          notes:
-            "No citations provided to substantiate trademark registration.",
+          notes: "No citations provided to substantiate trademark registration.",
         };
       } else if (tier1Citations.length > 0) {
         primaryClaim = {
@@ -130,8 +116,7 @@ export function evaluateEvidenceMatrix(
           isVerified: true,
           isReachableAndFresh: true,
           isIndependent: true,
-          notes:
-            "Verified via official registry authority (e.g. USPTO, Companies House).",
+          notes: "Verified via official registry authority (e.g. USPTO, Companies House).",
         };
       } else if (twoIndependentTier2) {
         primaryClaim = {
@@ -144,8 +129,7 @@ export function evaluateEvidenceMatrix(
           isVerified: true,
           isReachableAndFresh: true,
           isIndependent: true,
-          notes:
-            "Verified via two independent Tier 2 trade publications / business databases.",
+          notes: "Verified via two independent Tier 2 trade publications / business databases.",
         };
       } else if (tier2Citations.length === 1) {
         primaryClaim = {
@@ -159,8 +143,7 @@ export function evaluateEvidenceMatrix(
           isReachableAndFresh: true,
           isIndependent: false,
           rejectionReason: "EVIDENCE_NOT_INDEPENDENT",
-          notes:
-            "Single Tier 2 source lacks required independent corroboration.",
+          notes: "Single Tier 2 source lacks required independent corroboration.",
         };
       } else {
         primaryClaim = {
@@ -174,8 +157,7 @@ export function evaluateEvidenceMatrix(
           isReachableAndFresh: reachableCitations.length > 0,
           isIndependent: false,
           rejectionReason: "SOURCE_TIER_INSUFFICIENT",
-          notes:
-            "Tier 3 discovery sources cannot verify official trademark or corporate claims.",
+          notes: "Tier 3 discovery sources cannot verify official trademark or corporate claims.",
         };
       }
       break;
@@ -184,7 +166,6 @@ export function evaluateEvidenceMatrix(
     case "PERSON_CHARACTER": {
       const claimCategory: LegalClaimCategory = "DEFAMATION_FALSE_LIGHT_STATUS";
       const claimSummary = `Identity, public figure status, and vital records verification for "${entity.canonicalName}".`;
-
       if (citations.length === 0) {
         primaryClaim = {
           claimCategory,
@@ -197,8 +178,7 @@ export function evaluateEvidenceMatrix(
           isReachableAndFresh: false,
           isIndependent: false,
           rejectionReason: "EVIDENCE_MISSING",
-          notes:
-            "No citations provided to substantiate personal identity record.",
+          notes: "No citations provided to substantiate personal identity record.",
         };
       } else if (tier1Citations.length > 0) {
         primaryClaim = {
@@ -224,8 +204,7 @@ export function evaluateEvidenceMatrix(
           isVerified: true,
           isReachableAndFresh: true,
           isIndependent: true,
-          notes:
-            "Verified via two independent journalistic / authoritative editorial sources.",
+          notes: "Verified via two independent journalistic / authoritative editorial sources.",
         };
       } else if (tier2Citations.length === 1) {
         primaryClaim = {
@@ -253,8 +232,7 @@ export function evaluateEvidenceMatrix(
           isReachableAndFresh: reachableCitations.length > 0,
           isIndependent: false,
           rejectionReason: "SOURCE_TIER_INSUFFICIENT",
-          notes:
-            "Tier 3 sources insufficient for personality rights clearance.",
+          notes: "Tier 3 sources insufficient for personality rights clearance.",
         };
       }
       break;
@@ -264,7 +242,6 @@ export function evaluateEvidenceMatrix(
     default: {
       const claimCategory: LegalClaimCategory = "COPYRIGHT_LITERARY_OPTION";
       const claimSummary = `Copyright office registration and chain of title claim for "${entity.canonicalName}".`;
-
       if (citations.length === 0) {
         primaryClaim = {
           claimCategory,
@@ -277,8 +254,7 @@ export function evaluateEvidenceMatrix(
           isReachableAndFresh: false,
           isIndependent: false,
           rejectionReason: "EVIDENCE_MISSING",
-          notes:
-            "No citations provided for literary work or title verification.",
+          notes: "No citations provided for literary work or title verification.",
         };
       } else if (tier1Citations.length > 0) {
         primaryClaim = {
@@ -321,26 +297,22 @@ export function evaluateEvidenceMatrix(
             tier2Citations.length > 0
               ? "EVIDENCE_NOT_INDEPENDENT"
               : "SOURCE_TIER_INSUFFICIENT",
-          notes:
-            "Insufficient independent authority to verify literary title rights.",
+          notes: "Insufficient independent authority to verify literary title rights.",
         };
       }
       break;
     }
   }
 
-  // Check for contradiction / conflict overrides
   if (input.unresolvedConflict) {
     primaryClaim.status = "CONTRADICTED";
     primaryClaim.isVerified = false;
     primaryClaim.rejectionReason = "EVIDENCE_CONFLICT";
-    primaryClaim.notes =
-      "Unresolved evidentiary conflict detected across claims.";
+    primaryClaim.notes = "Unresolved evidentiary conflict detected across claims.";
   }
 
   claims.push(primaryClaim);
 
-  // 2. Evaluate Context / Use Claim (Nominative Fair Use or Fictional Composite)
   if (riskAnalysis.severeContext && riskAnalysis.strongConflict) {
     claims.push({
       claimCategory: "DEFAMATION_FALSE_LIGHT_STATUS",
@@ -353,8 +325,7 @@ export function evaluateEvidenceMatrix(
       isReachableAndFresh: false,
       isIndependent: false,
       rejectionReason: "STRONG_CONFLICT",
-      notes:
-        "Context contains unverified criminal/moral turpitude allegations or active trademark disparagement.",
+      notes: "Context contains unverified criminal/moral turpitude allegations or active trademark disparagement.",
     });
   } else if (riskAnalysis.rewritePathSupported) {
     claims.push({
@@ -368,8 +339,7 @@ export function evaluateEvidenceMatrix(
       isReachableAndFresh: false,
       isIndependent: false,
       rejectionReason: "REWRITE_PATH_SUPPORTED",
-      notes:
-        "Clearance path requires script dialogue or character name rewrite.",
+      notes: "Clearance path requires script dialogue or character name rewrite.",
     });
   } else if (riskAnalysis.licenceSignalSupported) {
     claims.push({
@@ -387,33 +357,16 @@ export function evaluateEvidenceMatrix(
     });
   }
 
-  // Count claims
-  const verifiedClaimsCount = claims.filter(
-    (c) => c.status === "VERIFIED",
-  ).length;
-  const unverifiedClaimsCount = claims.filter(
-    (c) => c.status === "UNVERIFIED",
-  ).length;
-  const contradictedClaimsCount = claims.filter(
-    (c) => c.status === "CONTRADICTED",
-  ).length;
-
+  const verifiedClaimsCount = claims.filter((c) => c.status === "VERIFIED").length;
+  const unverifiedClaimsCount = claims.filter((c) => c.status === "UNVERIFIED").length;
+  const contradictedClaimsCount = claims.filter((c) => c.status === "CONTRADICTED").length;
   const hasContradictions =
     contradictedClaimsCount > 0 || Boolean(input.unresolvedConflict);
-
-  // Clearance Eligibility Check:
-  // An entity is promotable to RESEARCH_CLEARED ONLY if:
-  // 1. At least one claim is VERIFIED with Tier 1 or 2 independent Tier 2 sources.
-  // 2. There are ZERO contradicted claims.
-  // 3. No rewrite, license, or severe risk conditions exist.
-  // 4. Provider did not fail and budget was not limited.
-  // 5. Match quality is not WEAK.
   const hasSpecialCondition =
     riskAnalysis.severeContext ||
     riskAnalysis.strongConflict ||
     riskAnalysis.rewritePathSupported ||
     riskAnalysis.licenceSignalSupported;
-
   const matchWeak = riskAnalysis.matchQuality === "WEAK";
 
   let promotableToResearchCleared = false;
@@ -428,13 +381,11 @@ export function evaluateEvidenceMatrix(
     evaluationNotes = "Research cost exceeded allotted run budget limit.";
   } else if (hasContradictions) {
     primaryReasonCode = "EVIDENCE_CONFLICT";
-    evaluationNotes =
-      "Contradictory evidence detected; cannot verify clearance.";
+    evaluationNotes = "Contradictory evidence detected; cannot verify clearance.";
   } else if (hasSpecialCondition) {
     if (riskAnalysis.severeContext && riskAnalysis.strongConflict) {
       primaryReasonCode = "STRONG_CONFLICT";
-      evaluationNotes =
-        "Severe legal risk context detected; professional review required.";
+      evaluationNotes = "Severe legal risk context detected; professional review required.";
     } else if (riskAnalysis.rewritePathSupported) {
       primaryReasonCode = "REWRITE_PATH_SUPPORTED";
       evaluationNotes = "Requires script rewrite to eliminate exposure.";
@@ -444,8 +395,7 @@ export function evaluateEvidenceMatrix(
     }
   } else if (matchWeak) {
     primaryReasonCode = "ENTITY_MATCH_WEAK";
-    evaluationNotes =
-      "Entity match quality too weak to substantiate legal claims.";
+    evaluationNotes = "Entity match quality too weak to substantiate legal claims.";
   } else if (citations.length === 0) {
     primaryReasonCode = "EVIDENCE_MISSING";
     evaluationNotes = "No citations provided to substantiate legal claims.";
@@ -457,12 +407,10 @@ export function evaluateEvidenceMatrix(
       tier2Citations.length === 1
         ? "EVIDENCE_NOT_INDEPENDENT"
         : "SOURCE_TIER_INSUFFICIENT";
-    evaluationNotes =
-      "Evidence lacks required Tier 1 authority or independent Tier 2 corroboration.";
+    evaluationNotes = "Evidence lacks required Tier 1 authority or independent Tier 2 corroboration.";
   } else if (verifiedClaimsCount > 0 && unverifiedClaimsCount === 0) {
     promotableToResearchCleared = true;
-    evaluationNotes =
-      "All required legal clearance claims verified by authoritative evidence.";
+    evaluationNotes = "All required legal clearance claims verified by authoritative evidence.";
   } else {
     primaryReasonCode = "EVIDENCE_WEAK";
     evaluationNotes = "Incomplete evidence across required legal claims.";
