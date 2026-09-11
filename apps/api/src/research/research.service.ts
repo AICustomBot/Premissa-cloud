@@ -293,7 +293,9 @@ export class ResearchService {
     await this.firestoreService.saveFinding(synthesis.finding);
 
     // Update Run Checkpoint: track completed entity
-    const completedSet = new Set(activeRun.checkpoint?.completedEntityIds ?? []);
+    const completedSet = new Set(
+      activeRun.checkpoint?.completedEntityIds ?? [],
+    );
     completedSet.add(request.entityId);
     const updatedRun: ClearanceRun = {
       ...activeRun,
