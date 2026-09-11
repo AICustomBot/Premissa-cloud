@@ -19,6 +19,12 @@ database-debug.log
 ui-debug.log
 pubsub-debug.log
 
-# Local client config overrides. The tracked firebase-applet-config.json holds
-# only public Firebase web config; see docs/security/CLIENT-CONFIG.md.
+# Client Firebase config is never tracked. The console and the dashboard both
+# receive it at runtime from the FIREBASE_WEB_CONFIG repository variable and
+# serve it from /__/config.json and /api/config respectively. The values are
+# public, but an AIza-prefixed key in the tree gets inlined into bundles, trips
+# the Dockerfile secret gate, and lights up every scanner for no benefit.
+# Both names are ignored so a local scratch copy cannot be committed back.
+# See docs/security/CLIENT-CONFIG.md.
+firebase-applet-config.json
 firebase-applet-config.local.json
