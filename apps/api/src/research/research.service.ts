@@ -1,8 +1,10 @@
 import {
+  HttpException,
   Injectable,
   Logger,
   PreconditionFailedException,
   NotFoundException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import {
@@ -55,6 +57,8 @@ export interface ResearchQueryResult {
  * 2. Strict Adapter Encapsulation: Provider SDK types remain strictly within adapters.
  * 3. Usage Ledger Precondition: Content-free ledger entry written after every provider call.
  * 4. Circuit Breakers & Rate Limits: Automated tripping on failures or budget exhaustion.
+ * 5. No Silent Degradation: A provider failure aborts the run. A finding is never
+ *    synthesised from an evidence set that is missing sources we intended to consult.
  */
 @Injectable()
 export class ResearchService {
@@ -135,6 +139,8 @@ export class ResearchService {
       await this.firestoreService.saveRun(run);
     }
 
+    const activeRun: ClearanceRun = run;
+
     // 4. Determine Active Adapters for this Entity Type
     const queryParams = {
       entityId: entity.id,
@@ -154,17 +160,22 @@ export class ResearchService {
     let totalCostUsd = 0;
     let providerCallsCount = 0;
 
-    // 5. Execute Multi-Source Parallel Retrieval through Circuit Breakers & Rate Limits
-    for (const adapter of targetAdapters) {
-      // Check Rate Limit & Budget Preconditions
-      this.rateLimiter.checkAndAcquire(
-        request.runId,
-        request.entityId,
-        run.budget.estimatedCostUsd + totalCostUsd,
-        run.budget.costCapUsd,
-      );
+    // 5. Execute Multi-Source Retrieval through Circuit Breakers & Rate Limits.
+    //
+    //    Provider failures are NEVER swallowed. Continuing past a failed
+    //    provider produces a finding whose evidence set silently omits a source
+    //    we told the customer we consulted, which is indistinguishable to the
+    //    reader from that source having found nothing.
+    try {
+      for (const adapter of targetAdapters) {
+        // Check Rate Limit & Budget Preconditions
+        this.rateLimiter.checkAndAcquire(
+          request.runId,
+          request.entityId,
+          activeRun.budget.estimatedCostUsd + totalCostUsd,
+          activeRun.budget.costCapUsd,
+        );
 
-      try {
         const response = await this.circuitBreaker.execute(
           adapter.providerName,
           async () => adapter.search(queryParams),
@@ -213,11 +224,28 @@ export class ResearchService {
 
           citationsCollected.push(normalizedCitation);
         }
-      } catch (adapterErr: unknown) {
-        this.logger.warn(
-          `Provider call failed for [${adapter.providerName}]; proceeding with remaining sources`,
-        );
       }
+    } catch (providerErr: unknown) {
+      const budgetFailure = providerErr instanceof PreconditionFailedException;
+      const pausedState = budgetFailure ? "PAUSED_BUDGET" : "PAUSED_FAILURE";
+
+      this.logger.error(
+        `Research aborted for entity [${request.entityId}] in run [${request.runId}]: ${
+          providerErr instanceof Error
+            ? providerErr.message
+            : String(providerErr)
+        }`,
+      );
+
+      await this.pauseRun(activeRun, pausedState);
+
+      if (providerErr instanceof HttpException) {
+        throw providerErr;
+      }
+
+      throw new ServiceUnavailableException(
+        "An evidence provider call failed and the clearance run has been paused. No finding was produced from the partial evidence set.",
+      );
     }
 
     // 6. Persist Citations
@@ -265,19 +293,21 @@ export class ResearchService {
     await this.firestoreService.saveFinding(synthesis.finding);
 
     // Update Run Checkpoint: track completed entity
-    const completedSet = new Set(run.checkpoint?.completedEntityIds ?? []);
+    const completedSet = new Set(
+      activeRun.checkpoint?.completedEntityIds ?? [],
+    );
     completedSet.add(request.entityId);
     const updatedRun: ClearanceRun = {
-      ...run,
-      version: run.version + 1,
+      ...activeRun,
+      version: activeRun.version + 1,
       updatedAt: new Date().toISOString(),
       checkpoint: {
         completedEntityIds: Array.from(completedSet),
-        pendingEntityIds: (run.checkpoint?.pendingEntityIds ?? []).filter(
+        pendingEntityIds: (activeRun.checkpoint?.pendingEntityIds ?? []).filter(
           (id) => id !== request.entityId,
         ),
         lastCheckpointAt: new Date().toISOString(),
-        attempt: run.checkpoint?.attempt ?? 1,
+        attempt: activeRun.checkpoint?.attempt ?? 1,
       },
     };
     await this.firestoreService.saveRun(updatedRun);
@@ -293,6 +323,30 @@ export class ResearchService {
       finding: synthesis.finding,
       gateDecision: synthesis.gateDecision,
     };
+  }
+
+  /**
+   * Records that a run stopped because evidence retrieval could not complete.
+   * Persistence failure here must not mask the original provider error.
+   */
+  private async pauseRun(
+    run: ClearanceRun,
+    state: "PAUSED_BUDGET" | "PAUSED_FAILURE",
+  ): Promise<void> {
+    try {
+      await this.firestoreService.saveRun({
+        ...run,
+        state,
+        version: run.version + 1,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (persistErr: unknown) {
+      this.logger.error(
+        `Failed to persist [${state}] state for run [${run.id}]: ${
+          persistErr instanceof Error ? persistErr.message : String(persistErr)
+        }`,
+      );
+    }
   }
 
   async getFindingsForRun(runId: string): Promise<Finding[]> {

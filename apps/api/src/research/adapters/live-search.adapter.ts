@@ -1,109 +1,88 @@
 import { Injectable, Logger } from "@nestjs/common";
-import {
+import type {
   ISearchProvider,
   ProviderSearchQuery,
   ProviderSearchResponse,
-  RawCitationItem,
 } from "./search-provider.interface.js";
-import { resolveDomainMetadata } from "./domain-authority.js";
+import {
+  checkParallelApiHealth,
+  executeParallelSearch,
+  toRawCitations,
+} from "./parallel-search.client.js";
 
 /**
- * Encapsulated Live Search Adapter.
- * Orchestrates broad web indexing and domain retrieval for candidate entity mentions.
- * Strictly adheres to constitutional rule:
- * Provider SDK types remain within this adapter, returning normalized domain types.
+ * Open-web evidence retrieval backed by the Parallel Search API.
+ *
+ * This adapter contributes discovery-grade evidence. It asserts no tier of its
+ * own: the tier of every citation is resolved from the domain that actually
+ * served the page.
  */
 @Injectable()
 export class LiveSearchAdapter implements ISearchProvider {
-  private readonly logger = new Logger(LiveSearchAdapter.name);
-
-  readonly providerName = "Multi-Source Reference Grounding Engine";
+  readonly providerName = "PARALLEL_LIVE_SEARCH";
   readonly providerType = "PARALLEL_SEARCH" as const;
 
-  async checkHealth(): Promise<{ healthy: boolean; latencyMs: number }> {
-    const start = Date.now();
-    return {
-      healthy: true,
-      latencyMs: Date.now() - start,
-    };
-  }
+  private readonly logger = new Logger(LiveSearchAdapter.name);
 
   async search(query: ProviderSearchQuery): Promise<ProviderSearchResponse> {
-    const start = Date.now();
-    const citations: RawCitationItem[] = [];
+    const searchQueries = this.buildQueries(query);
 
-    const cleanName = query.canonicalName.trim();
-    const encoded = encodeURIComponent(cleanName);
+    const outcome = await executeParallelSearch(
+      {
+        objective: this.buildObjective(query),
+        searchQueries,
+      },
+      this.logger,
+    );
 
-    // Provide domain-grounded citation evidence based on entity category
-    if (query.type === "BRAND_BUSINESS_PRODUCT") {
-      const domain = "bloomberg.com";
-      const meta = resolveDomainMetadata(domain);
-
-      citations.push({
-        originalUrl: `https://www.bloomberg.com/quote/${encoded}:US`,
-        resolvedUrl: `https://www.bloomberg.com/quote/${encoded}:US`,
-        resolvedDomain: domain,
-        controllingOwner: meta.controllingOwner,
-        title: `Bloomberg Company Index: ${cleanName}`,
-        excerpt: `Market snapshot and regulatory filings summary for ${cleanName}. Registered brand assets, executive leadership, and primary product lines.`,
-        sourceTier: "TIER_2",
-        claimType: "CURRENT_STATUS",
-        query: cleanName,
-        publishedAt: "2024-01-15T00:00:00Z",
-        updatedAt: "2025-02-10T00:00:00Z",
-        registryRecordId: null,
-        reachable: true,
-      });
-    } else if (query.type === "PRODUCTION_TITLE") {
-      const domain = "eidr.org";
-      const meta = resolveDomainMetadata(domain);
-      const eidrId = `10.5240/${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`;
-
-      citations.push({
-        originalUrl: `https://ui.eidr.org/view/content?id=${eidrId}`,
-        resolvedUrl: `https://ui.eidr.org/view/content?id=${eidrId}`,
-        resolvedDomain: domain,
-        controllingOwner: meta.controllingOwner,
-        title: `EIDR Entertainment Identifier Registry: "${cleanName}" (${eidrId})`,
-        excerpt: `Universal unique identifier record for audiovisual production title "${cleanName}". Original release metadata, structural hierarchy, and alternate title records.`,
-        sourceTier: "TIER_2",
-        claimType: "CURRENT_STATUS",
-        query: cleanName,
-        publishedAt: "2023-09-10T00:00:00Z",
-        updatedAt: "2024-12-01T00:00:00Z",
-        registryRecordId: eidrId,
-        reachable: true,
-      });
-    } else {
-      const domain = "variety.com";
-      const meta = resolveDomainMetadata(domain);
-
-      citations.push({
-        originalUrl: `https://variety.com/t/${encoded}/`,
-        resolvedUrl: `https://variety.com/t/${encoded}/`,
-        resolvedDomain: domain,
-        controllingOwner: meta.controllingOwner,
-        title: `Variety Topic Archive: Character & Industry Role Index for "${cleanName}"`,
-        excerpt: `Historical entertainment archive references and credit listings corroborating identity and public biographical record for "${cleanName}".`,
-        sourceTier: "TIER_2",
-        claimType: "CURRENT_STATUS",
-        query: cleanName,
-        publishedAt: "2023-11-20T00:00:00Z",
-        updatedAt: "2024-10-18T00:00:00Z",
-        registryRecordId: null,
-        reachable: true,
-      });
-    }
-
-    const latencyMs = Date.now() - start;
-    const costUsd = 0.008;
+    const citations = await toRawCitations({
+      results: outcome.results,
+      query: searchQueries.join(" | "),
+      logger: this.logger,
+    });
 
     return {
       citations,
-      latencyMs,
-      costUsd,
-      unitsUsed: 1,
+      latencyMs: outcome.latencyMs,
+      costUsd: outcome.costUsd,
+      unitsUsed: outcome.unitsUsed,
     };
+  }
+
+  async checkHealth(): Promise<{ healthy: boolean; latencyMs: number }> {
+    return checkParallelApiHealth();
+  }
+
+  private buildObjective(query: ProviderSearchQuery): string {
+    const name = query.canonicalName;
+    switch (query.type) {
+      case "PRODUCTION_TITLE":
+        return `Determine whether "${name}" is an existing film, television series or other production title already in use, and identify who controls the rights to it. Prefer primary and authoritative sources over aggregators.`;
+      case "BRAND_BUSINESS_PRODUCT":
+        return `Determine whether "${name}" is an existing brand, business or product in commercial use, and identify the owning entity. Prefer official registers, regulatory filings and first-party sources.`;
+      case "PERSON_CHARACTER":
+      default:
+        return `Determine whether "${name}" identifies a real, identifiable living or recently living person, and establish who that person is. Prefer authoritative biographical and first-party sources.`;
+    }
+  }
+
+  private buildQueries(query: ProviderSearchQuery): string[] {
+    const names = [query.canonicalName, ...(query.aliases ?? [])]
+      .map((value) => (typeof value === "string" ? value.trim() : ""))
+      .filter((value) => value.length > 0)
+      .slice(0, 3);
+
+    const qualifier =
+      query.type === "PRODUCTION_TITLE"
+        ? "film series production title rights holder"
+        : query.type === "BRAND_BUSINESS_PRODUCT"
+          ? "company brand product trademark owner"
+          : "real person public figure identity";
+
+    if (names.length === 0) {
+      return [qualifier];
+    }
+
+    return names.map((name) => `"${name}" ${qualifier}`);
   }
 }
