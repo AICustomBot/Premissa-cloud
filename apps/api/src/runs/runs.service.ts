@@ -352,8 +352,7 @@ export class RunsService {
     const pending = confirmed.filter(
       (entity) => !completedNow.has(entity.id),
     ).length;
-    const cappedOut =
-      pending > 0 && completedNow.size >= run.budget.entityCap;
+    const cappedOut = pending > 0 && completedNow.size >= run.budget.entityCap;
 
     if (attempted > 0 && failedEntityCount === attempted) {
       stopReason = "ALL_ENTITIES_FAILED";
@@ -436,7 +435,8 @@ export class RunsService {
       state: patch.state,
       version: run.version + 1,
       updatedAt: now,
-      startedAt: patch.startedAt !== undefined ? patch.startedAt : run.startedAt,
+      startedAt:
+        patch.startedAt !== undefined ? patch.startedAt : run.startedAt,
       endedAt: patch.endedAt !== undefined ? patch.endedAt : run.endedAt,
       checkpoint: {
         completedEntityIds: run.checkpoint?.completedEntityIds ?? [],

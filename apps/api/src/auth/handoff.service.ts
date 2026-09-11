@@ -1,4 +1,8 @@
-import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import admin from "firebase-admin";
 import type { AuthenticatedUser } from "./auth.types.js";
 
